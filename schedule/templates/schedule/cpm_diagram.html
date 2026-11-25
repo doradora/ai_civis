@@ -73,7 +73,12 @@
 
             <div class="d-flex flex-column" style="height: 100%; width: 100%;">
                 <!-- Top Control Bar -->
-                <div id="control-bar-outside-div" class="sc-cpm-topbar row mx-0 align-items-center">
+                <div
+                    id="control-bar-outside-div"
+                    class="sc-cpm-topbar {% if embed %}sc-cpm-topbar-embed{% endif %} row mx-0 align-items-center"
+                    v-if="!is_embed || is_graph_edit"
+                >
+                    {% if not embed %}
                     <div class="col-md-6 px-0 d-flex align-items-center gap-2" style="overflow: auto; white-space: nowrap;">
                         <span class="material-icons text-info">hub</span>
                         <span class="fw-bold" style="font-size: 1.1rem;">{{ version.project_name }}</span>
@@ -81,7 +86,15 @@
                             建立：{{ version.create_time|date:'Y-m-d H:i' }}
                         </span>
                     </div>
-                    <div class="col-md-6 px-0 text-end">
+                    {% else %}
+                    <div class="col-md-4 px-0 d-flex align-items-center gap-2">
+                        <span class="badge rounded-pill bg-primary-subtle text-primary border border-primary-subtle px-2 py-1">
+                            <span class="material-icons align-middle me-1" style="font-size:14px;">edit</span>網圖編輯模式
+                        </span>
+                        <span class="small text-secondary rwd-hide">拖曳節點與拉線完成後請點擊「計算並發佈」</span>
+                    </div>
+                    {% endif %}
+                    <div class="{% if embed %}col-md-8{% else %}col-md-6{% endif %} px-0 text-end">
                         <div id="control-bar-outside" class="edit-bar d-flex flex-wrap gap-2 justify-content-end" role="group">
                             <button
                                 id="import-data-btn"
@@ -152,7 +165,7 @@
 
                 <!-- Interactive GoJS Canvas -->
                 <div id="edit-graph" class="graph-div sc-cpm-canvas d-flex flex-column" style="height: 100%; flex: 1 1 100%;">
-                    <div v-cloak id="info-bar" class="sc-float-pill">
+                    <div v-cloak v-if="!is_embed || is_graph_edit" id="info-bar" class="sc-float-pill">
                         <small>
                             總比率:
                             <strong v-cloak :class="fix_float_num(total_unit_price) > 100 ? 'text-danger' : total_unit_price == 100 ? 'text-success' : 'text-primary'">
@@ -165,7 +178,7 @@
                         </small>
                     </div>
 
-                    <span id="settings-notice" class="sc-float-pill">
+                    <span v-if="!is_embed || is_graph_edit" id="settings-notice" class="sc-float-pill">
                         <span>目標總施工天數: <strong>{{ total_days }} 天</strong>（目前設定: <strong class="text-primary">[[ graph_setting_duration ]] 天</strong>）</span>
                         <br v-if="detect_is_project_total_days_distance !== 0">
                         <span v-if="detect_is_project_total_days_distance < 0" class="text-warning fw-bold pt-1 d-inline-flex align-items-center">
@@ -185,6 +198,7 @@
                     </span>
 
                     <button
+                        v-if="is_graph_edit"
                         id="create-item-btn" type="button" class="btn btn-success sc-btn" @click="add_item_edit_mode()"
                         data-bs-toggle="tooltip" data-bs-placement="bottom" title="新增工項節點"
                     >
@@ -193,6 +207,7 @@
                     </button>
 
                     <button
+                        v-if="is_graph_edit"
                         id="rerender-node-btn"
                         type="button"
                         class="btn sc-btn"
@@ -366,6 +381,8 @@
             const PROJECT_ID = "{{ project.id|default:'' }}";
             const ROOT_ITEM_ID = "{{ root_item.id }}";
             const PROJECT_TOTAL_DAYS = "{{ total_days }}";
+            const INITIAL_READONLY = {% if readonly %}true{% else %}false{% endif %};
+            const IS_EMBED = {% if embed %}true{% else %}false{% endif %};
             var CSRFMIDDLEWARETOKEN = $('input[name=csrfmiddlewaretoken]').val();
 
             Vue.use(VueLoading);

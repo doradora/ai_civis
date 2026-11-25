@@ -388,9 +388,12 @@ def _update_single_schedule_item(item, data, user=None):
     version.update_time = NOW()
     if user and user.is_authenticated:
         version.update_user = user
-    version.need_recount_esef = True
-    version.cpm_release = False
-    version.save(update_fields=['update_time', 'update_user', 'need_recount_esef', 'cpm_release'])
+    if data.get('cpm_float_shift'):
+        version.save(update_fields=['update_time', 'update_user'])
+    else:
+        version.need_recount_esef = True
+        version.cpm_release = False
+        version.save(update_fields=['update_time', 'update_user', 'need_recount_esef', 'cpm_release'])
     return None
 
 

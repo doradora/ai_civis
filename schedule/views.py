@@ -29,6 +29,7 @@ from django.db.models import F
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse, StreamingHttpResponse
 from django.shortcuts import render
 from django.template.loader import render_to_string
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.csrf import csrf_exempt
 from matplotlib import font_manager
 
@@ -101,6 +102,38 @@ def item_profile(R, version_id):
         else:
             i.transfer_value = int(round_fix(float(str(engs_price)) * float(str(i.unit_price)) / 100.0, 0))
 
+    weight_total = float(root_item.unit_price or 0)
+    weight_diff = round_fix(weight_total - 100.0, 5)
+    weight_is_valid = abs(weight_total - 100.0) < 1e-4
+
+    cpm_nodes = []
+    for i in items[1:]:
+        es = int(i.es or 0)
+        ef = int(i.ef or 0)
+        ls = int(i.ls or 0)
+        lf = int(i.lf or 0)
+        dur = int(i.duration or max(0, ef - es + 1))
+        cpm_nodes.append({
+            'id': i.id,
+            'name': i.name or '',
+            'es': es,
+            'ef': ef,
+            'ls': ls,
+            'lf': lf,
+            'duration': dur,
+            'tf': ls - es,
+            'unit_price': float(i.unit_price or 0),
+            'transfer_value': int(getattr(i, 'transfer_value', 0) or 0),
+            'cp': bool(i.cp),
+        })
+
+    try:
+        parsed_links = json.loads(version.cpm_link or '[]')
+        if not isinstance(parsed_links, list):
+            parsed_links = []
+    except Exception:
+        parsed_links = []
+
     if version.schedule_setting_type == 1:
         t = join('schedule', 'item_cpm.html')
     else:
@@ -116,10 +149,16 @@ def item_profile(R, version_id):
             'engs_price': engs_price,
             'root_item': root_item,
             'items': items,
+            'weight_total': weight_total,
+            'weight_diff': weight_diff,
+            'weight_is_valid': weight_is_valid,
+            'cpm_nodes_json': json.dumps(cpm_nodes, ensure_ascii=False),
+            'cpm_links_json': json.dumps(parsed_links, ensure_ascii=False),
         },
     )
 
 
+@xframe_options_sameorigin
 def cpm_diagram(R):
     get_dir_kind()
     get_item_kind()
@@ -142,7 +181,9 @@ def cpm_diagram(R):
         {
             'total_days': version.duration,
             'project': project,
-            'edit': True,
+            'edit': R.GET.get('readonly') != '1',
+            'readonly': R.GET.get('readonly') == '1',
+            'embed': R.GET.get('embed') == '1',
             'version': version,
             'root_item': root_item,
             'item_version': None,
@@ -151,6 +192,7 @@ def cpm_diagram(R):
     )
 
 
+@xframe_options_sameorigin
 def gantt_diagram(R):
     get_dir_kind()
     get_item_kind()
@@ -183,7 +225,22 @@ def gantt_diagram(R):
         if i.uplevel == root_item:
             i.uplevel = None
         i.symbol = i.read_level_symbol()
-        i.start_date = start_date + datetime.timedelta(days=max(0, i.es - 1))
+        if version.schedule_setting_type == 1:
+            es_0 = max(0, int(i.es or 0))
+            ls_0 = max(0, int(i.ls or 0))
+            ef_1 = max(1, int(i.ef or 1))
+            lf_1 = max(ef_1, int(i.lf or ef_1))
+            i.start_date = start_date + datetime.timedelta(days=es_0)
+            i.cpm_min_start = es_0 + 1
+            i.cpm_max_end = lf_1
+            i.cpm_tf = max(0, ls_0 - es_0)
+            i.cpm_duration = max(1, int(i.duration or (ef_1 - es_0)))
+        else:
+            i.start_date = start_date + datetime.timedelta(days=max(0, int(i.es or 1) - 1))
+            i.cpm_min_start = max(1, int(i.es or 1))
+            i.cpm_max_end = max(1, int(i.ef or 1))
+            i.cpm_tf = 0
+            i.cpm_duration = max(1, int(i.get_delta() or 1))
         for link in i.get_link():
             item_links.append(link)
 
@@ -196,6 +253,7 @@ def gantt_diagram(R):
         {
             'project': project,
             'edit': True,
+            'embed': R.GET.get('embed') == '1',
             'start_date': start_date,
             'pre_start_date': pre_start_date,
             'end_date': end_date,

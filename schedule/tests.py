@@ -205,3 +205,56 @@ class FullJsrcmScheduleTests(TestCase):
         )
         self.assertEqual(r_resp.status_code, 200)
         self.assertEqual(v_r.scheduleitem_set.exclude(uplevel=None).count(), 3)
+
+    def test_item_cpm_unified_workspace_and_embed_modes(self):
+        # 1. Weight == 100% renders valid green pill & unified workspace hooks
+        resp = self.client.get(f'/schedule/item_profile/{self.v_cpm.id}/')
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode('utf-8')
+        for marker in [
+            'id="version_project_name"',
+            'id="edit_version_project_name"',
+            'id="version_duration"',
+            'id="set_duration"',
+            'id="tab-cpm"',
+            'id="tab-gantt"',
+            'id="draw_s_curve"',
+            'id="btn-toggle-editor"',
+            'id="toggle-critical-only"',
+            'id="btn-auto-layout"',
+            'id="iframe-cpm"',
+            'readonly=1',
+            'sc-weight-pill is-valid',
+            '權重總計：100%',
+        ]:
+            self.assertIn(marker, html)
+
+        # 2. Weight != 100% renders invalid warning pill with diff
+        self.t3.delete()
+        resp_invalid = self.client.get(f'/schedule/item_profile/{self.v_cpm.id}/')
+        self.assertEqual(resp_invalid.status_code, 200)
+        html_invalid = resp_invalid.content.decode('utf-8')
+        self.assertIn('sc-weight-pill is-invalid', html_invalid)
+        self.assertIn('差額', html_invalid)
+
+        # 3. Embed modes for Gantt and CPM editor (including readonly=1)
+        g_embed = self.client.get(f'/schedule/gantt_diagram/?version_id={self.v_cpm.id}&embed=1')
+        self.assertEqual(g_embed.status_code, 200)
+        self.assertEqual(g_embed['X-Frame-Options'], 'SAMEORIGIN')
+        self.assertNotIn('class="sc-gantt-topbar"', g_embed.content.decode('utf-8'))
+
+        c_embed = self.client.get(f'/schedule/cpm_diagram/?version_id={self.v_cpm.id}&embed=1&readonly=1')
+        self.assertEqual(c_embed.status_code, 200)
+        self.assertEqual(c_embed['X-Frame-Options'], 'SAMEORIGIN')
+        c_html = c_embed.content.decode('utf-8')
+        self.assertIn('sc-cpm-topbar-embed', c_html)
+        self.assertIn('const INITIAL_READONLY = true;', c_html)
+
+        # 4. Gantt mode item_profile stays unaffected with original dark topbar
+        v_gantt = Version_Schedule.objects.create(
+            project=self.project, project_name='甘特回歸測試', schedule_setting_type=2, duration=60,
+        )
+        v_gantt.create_root_item()
+        vg_resp = self.client.get(f'/schedule/item_profile/{v_gantt.id}/')
+        self.assertEqual(vg_resp.status_code, 200)
+        self.assertIn('class="sc-topbar ', vg_resp.content.decode('utf-8'))

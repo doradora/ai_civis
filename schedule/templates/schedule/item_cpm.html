@@ -15,7 +15,6 @@
 
     <style>
         .tooltip { min-width: 260px; }
-        .viewer-container { width: 100% !important; height: 100% !important; }
     </style>
     <script>
         var project_id = parseInt('{{ project.id|default:"0" }}');
@@ -30,197 +29,221 @@
     </script>
 {% endblock %}
 
+{% block topbar %}
+<header class="sc-topbar-light" style="flex: 0 0 auto;">
+    <!-- Left: Back + Title + Draft Pill + Rename -->
+    <div class="sc-topbar-left">
+        <a href="/schedule/manage_schedule/" class="sc-icon-btn" title="返回預定進度精靈列表">
+            <span class="material-icons">arrow_back</span>
+        </a>
+        <span id="version_project_name" class="sc-project-title" title="{{ version.project_name }}">{{ version.project_name }}</span>
+        <span class="sc-draft-badge">草稿</span>
+        <button type="button" class="sc-icon-btn-sm" id="edit_version_project_name" title="點擊修改草稿名稱">
+            <span class="material-icons">edit</span>
+        </button>
+    </div>
+
+    <!-- Center: Unified In-Page Segmented Switcher -->
+    <div class="sc-topbar-center">
+        <div class="sc-segmented" role="tablist" aria-label="預定進度檢視切換">
+            <button type="button" class="sc-segmented-btn active" id="tab-cpm" data-view="cpm" role="tab" aria-selected="true">
+                CPM 網圖
+            </button>
+            <button type="button" class="sc-segmented-btn" id="tab-gantt" data-view="gantt" role="tab" aria-selected="false">
+                甘特圖
+            </button>
+            <button type="button" class="sc-segmented-btn" id="draw_s_curve" data-view="scurve" role="tab" aria-selected="false">
+                S 曲線
+            </button>
+        </div>
+    </div>
+
+    <!-- Right: Import / Export / More / Primary Edit Button -->
+    <div class="sc-topbar-right">
+        <div class="btn-group" role="group">
+            <button id="btnGroupDrop2" type="button" class="btn sc-btn-outline-clean dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                <span>匯入</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end sc-clean-dropdown" aria-labelledby="btnGroupDrop2">
+                <li>
+                    <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#import_json_dialog">
+                        <span class="material-icons text-primary">data_object</span>精靈專用檔 Json 匯入
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#import_scpm_dialog">
+                        <span class="material-icons text-info">restore</span>精靈備份檔 SCPM 匯入
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <div class="btn-group" role="group">
+            <button id="btnGroupDrop1" type="button" class="btn sc-btn-outline-clean dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                <span>匯出</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end sc-clean-dropdown" aria-labelledby="btnGroupDrop1">
+                <li>
+                    <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#export_dailyreport_xlsx_dialog">
+                        <span class="material-icons text-success">table_view</span>匯出此版本 Excel [比率格式] (日報表用)
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#export_adm_dialog">
+                        <span class="material-icons text-danger">schema</span>匯出轉換 ADM 箭線圖 (PNG)
+                    </a>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <a class="dropdown-item" href="{% url 'schedule.views.make_json_scheduleitem' version_id=version.id %}?price_type=rate">
+                        <span class="material-icons text-primary">code</span>匯出此版本 Json [精靈專用檔]
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="{% url 'schedule.views.make_json_scheduleitem' version_id=version.id %}?price_type=rate&ext=scpm">
+                        <span class="material-icons text-info">backup</span>匯出此版本 SCPM [精靈備份檔]
+                    </a>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#export_gantt_xlsx_dialog">
+                        <span class="material-icons text-success">view_timeline</span>匯出甘特圖 [Excel 檔案]
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#export_png_dialog">
+                        <span class="material-icons text-warning">image</span>匯出甘特圖 [PNG 圖檔]
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <div class="btn-group" role="group">
+            <button id="btnMoreActions" type="button" class="btn sc-btn-outline-clean sc-more-btn" data-bs-toggle="dropdown" aria-expanded="false" title="更多操作">
+                <span class="material-icons">more_horiz</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end sc-clean-dropdown" aria-labelledby="btnMoreActions">
+                <li>
+                    <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#clone_version_dialog">
+                        <span class="material-icons text-warning">content_copy</span>複製一份新的草稿
+                    </a>
+                </li>
+                {% if project %}
+                <li>
+                    <a class="dropdown-item" href="{% url 'core:project_list' %}">
+                        <span class="material-icons text-primary">engineering</span>對應工程案管理
+                    </a>
+                </li>
+                {% endif %}
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <a class="dropdown-item" href="{% url 'core:dashboard' %}">
+                        <span class="material-icons text-secondary">dashboard</span>返回系統總覽
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <button type="button" class="btn sc-btn sc-btn-primary" id="btn-toggle-editor">
+            <span class="material-icons" id="btn-toggle-editor-icon">hub</span>
+            <span id="btn-toggle-editor-text">編輯網圖</span>
+        </button>
+    </div>
+</header>
+{% endblock %}
+
+{% block workspace_class %}sc-cpm-workspace{% endblock %}
+
 {% block body %}
 <div class="d-flex flex-column" style="width: 100%; height: 100%;">
-    <!-- KPI Info Cards -->
-    <div class="sc-kpi-grid" style="flex: 0 0 auto;">
-        <div class="sc-kpi-card">
-            <div class="sc-kpi-icon sky"><span class="material-icons">account_tree</span></div>
-            <div>
-                <div class="sc-kpi-label">預定進度模式</div>
-                <div class="sc-kpi-value">
-                    <span class="sc-pill sc-pill-cpm">節點要徑 CPM 模式</span>
-                </div>
-            </div>
-        </div>
-
-        <div class="sc-kpi-card">
-            <div class="sc-kpi-icon blue"><span class="material-icons">event_available</span></div>
-            <div>
-                <div class="sc-kpi-label">此草稿目標總天數</div>
-                <div class="sc-kpi-value">
-                    <span><span class="text-primary" id="version_duration">{{ version.duration }}</span> 天</span>
-                    <button class="btn btn-sm sc-btn-soft py-0 px-2" style="font-size:0.78rem;border-radius:7px;" id="set_duration">設定</button>
-                    {% if not version.duration %}
-                        <span class="sc-pill sc-pill-danger" id="msg_no_duration">請先設定天數</span>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-
-        <div class="sc-kpi-card">
-            <div class="sc-kpi-icon amber"><span class="material-icons">engineering</span></div>
-            <div style="min-width: 0;">
-                <div class="sc-kpi-label">對應工程案{% if engs_price %} · 契約金額{% endif %}</div>
-                <div class="sc-kpi-value" style="font-size: 0.92rem;">
-                    {% if project %}
-                        <span class="text-truncate" title="{{ project.name }}">{{ project.name }}</span>
-                        <a href="{% url 'core:project_list' %}" class="text-primary" title="工程案管理"><i class="material-icons align-middle" style="font-size:17px;">open_in_browser</i></a>
-                    {% else %}
-                        <span class="text-muted">無對應工程</span>
-                    {% endif %}
-                </div>
-                {% if engs_price %}
-                    <div class="small text-secondary">{{ engs_price|floatformat:1|intcomma|cutzero }} 元 (100%)</div>
+    <!-- Sleek Single-Row KPI Info Strip -->
+    <div class="sc-cpm-infobar" id="cpm-infobar" style="flex: 0 0 auto;">
+        <div class="sc-infobar-left">
+            <span class="sc-info-item">
+                模式：<strong>節點要徑 (CPM)</strong>
+            </span>
+            <span class="sc-info-sep"></span>
+            <span class="sc-info-item">
+                目標總工期：<strong id="version_duration">{{ version.duration }}</strong> 天
+                <button type="button" class="sc-inline-edit-btn" id="set_duration" title="設定目標總天數">
+                    <span class="material-icons">edit</span>
+                </button>
+                {% if not version.duration %}
+                    <span class="sc-pill sc-pill-danger ms-1" id="msg_no_duration">請先設定天數</span>
                 {% endif %}
-            </div>
+            </span>
+            <span class="sc-info-sep"></span>
+            <span class="sc-info-item">
+                {% if engs_price %}
+                    契約金額：<strong>NT$ {{ engs_price|floatformat:0|intcomma }}</strong>
+                {% elif project %}
+                    對應工程：<strong>{{ project.name }}</strong>
+                {% else %}
+                    對應工程：<span class="text-muted">未綁定</span>
+                {% endif %}
+            </span>
+            <span class="sc-info-sep"></span>
+            {% if weight_is_valid %}
+                <span class="sc-weight-pill is-valid" id="weight-status-pill">
+                    權重總計：100% <span class="material-icons" style="font-size:15px;">check</span>
+                </span>
+            {% else %}
+                <span class="sc-weight-pill is-invalid" id="weight-status-pill" title="所有工項權重總和應為 100%">
+                    權重總計：{{ root_item.unit_price|floatformat:5|cutzero }}%（差額 {% if weight_diff > 0 %}+{% endif %}{{ weight_diff }}%）
+                </span>
+            {% endif %}
         </div>
 
-        <div class="sc-kpi-card">
-            <div class="sc-kpi-icon emerald"><span class="material-icons">pie_chart</span></div>
-            <div>
-                <div class="sc-kpi-label">目前設定總比率</div>
-                <div class="sc-kpi-value">
-                    <span class="{% if root_item.unit_price == 100 %}text-success{% else %}text-primary{% endif %}">
-                        {{ root_item.unit_price|floatformat:5|cutzero }} %
-                    </span>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Action Toolbar -->
-    <div class="sc-toolbar" style="flex: 0 0 auto;">
-        <div class="sc-toolbar-group">
-            <button type="button" class="btn sc-btn sc-btn-primary open_cpm">
-                <i class="material-icons">hub</i>
-                <span><span class="rwd-hide">開啟 </span>CPM 網圖編輯</span>
-            </button>
-
-            <div class="btn-group" role="group">
-                <button id="btnGroupDrop2" type="button" class="btn sc-btn sc-btn-soft dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="material-icons">upload_file</i>
-                    <span>匯入<span class="rwd-hide">工項</span></span>
-                </button>
-                <ul class="dropdown-menu" aria-labelledby="btnGroupDrop2">
-                    <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#import_json_dialog"><span class="material-icons text-primary" style="font-size:18px;">data_object</span>精靈專用檔 Json 匯入</a></li>
-                    <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#import_scpm_dialog"><span class="material-icons text-info" style="font-size:18px;">restore</span>精靈備份檔 SCPM 匯入</a></li>
-                </ul>
-            </div>
-
-            <button type="button" class="btn sc-btn sc-btn-soft" id="draw_s_curve">
-                <i class="material-icons text-primary">show_chart</i>
-                <span><span class="rwd-hide">預定進度 </span>S 曲線</span>
-            </button>
-
-            <div class="btn-group" role="group">
-                <button id="btnGroupDrop1" type="button" class="btn sc-btn sc-btn-soft dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="material-icons text-success">file_download</i>
-                    <span>匯出<span class="rwd-hide">報表與圖檔</span></span>
-                </button>
-                <ul class="dropdown-menu" aria-labelledby="btnGroupDrop1">
-                    <li>
-                        <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#export_dailyreport_xlsx_dialog">
-                            <span class="material-icons text-success" style="font-size:18px;">table_view</span>匯出此版本 Excel [比率格式] (日報表用)
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#export_adm_dialog">
-                            <span class="material-icons text-danger" style="font-size:18px;">schema</span>匯出轉換 ADM 箭線圖 (PNG)
-                        </a>
-                    </li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li>
-                        <a class="dropdown-item" href="{% url 'schedule.views.make_json_scheduleitem' version_id=version.id %}?price_type=rate">
-                            <span class="material-icons text-primary" style="font-size:18px;">code</span>匯出此版本 Json [精靈專用檔]
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="{% url 'schedule.views.make_json_scheduleitem' version_id=version.id %}?price_type=rate&ext=scpm">
-                            <span class="material-icons text-info" style="font-size:18px;">backup</span>匯出此版本 SCPM [精靈備份檔]
-                        </a>
-                    </li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li>
-                        <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#export_gantt_xlsx_dialog">
-                            <span class="material-icons text-success" style="font-size:18px;">view_timeline</span>匯出甘特圖 [Excel 檔案]
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#export_png_dialog">
-                            <span class="material-icons text-warning" style="font-size:18px;">image</span>匯出甘特圖 [PNG 圖檔]
-                        </a>
-                    </li>
-                </ul>
-            </div>
-        </div>
-
-        <div class="sc-toolbar-group">
-            <button class="btn sc-btn sc-btn-amber" type="button" data-bs-toggle="modal" data-bs-target="#clone_version_dialog">
-                <i class="material-icons">content_copy</i>
-                <span>複製一份新的草稿</span>
+        <!-- Right Interactive Canvas Controls (visible on CPM view) -->
+        <div class="sc-infobar-right" id="cpm-canvas-controls">
+            <label class="sc-toggle-wrap mb-0" for="toggle-critical-only">
+                <input type="checkbox" id="toggle-critical-only" class="sc-toggle-input">
+                <span class="sc-toggle-track"></span>
+                <span class="sc-toggle-label">僅高亮要徑</span>
+            </label>
+            <button type="button" class="btn sc-btn-outline-clean sc-btn-sm" id="btn-auto-layout" title="重新依左至右拓撲自動排版並置中">
+                <span class="material-icons" style="font-size:16px;">auto_fix_high</span>
+                <span>自動排版</span>
             </button>
         </div>
     </div>
 
-    {% if version.file and not version.cpm_release %}
-        <div class="sc-warning-banner" style="flex: 0 0 auto;">
-            <span class="material-icons" style="font-size:18px;">warning_amber</span>
-            注意：您的工項有變動紀錄且尚未重新計算，下方 CPM 圖可能不是最新版本，請開啟 CPM 網圖編輯並點選「計算並儲存」。
-        </div>
-    {% endif %}
+    <!-- Unified Multi-View Workspace Stage (Zero Popups, Unified GoJS View & Edit!) -->
+    <div class="sc-cpm-stage-shell">
+        <!-- View 1: Unified GoJS CPM Diagram (Read-Only by default; toggles in-place to Edit Mode) -->
+        <section id="view-cpm" class="sc-view-pane active">
+            <iframe
+                id="iframe-cpm"
+                class="sc-embed-iframe"
+                title="CPM 網圖"
+                src="/schedule/cpm_diagram/?version_id={{ version.id }}&embed=1&readonly=1"
+            ></iframe>
+        </section>
 
-    <!-- CPM Preview Stage -->
-    <div class="sc-cpm-stage">
-        {% if version.file %}
-            <img
-                id="cpm-image"
-                src="/schedule/download_file/Version_Schedule/{{ version.id }}/?open=true&t={{ version.update_time|date:'YmdHis' }}"
-                alt="cpm photo"
-                width="100%"
-                style="width: 100%; height: 100%; object-fit: contain; display: none;"
-            >
-        {% else %}
-            <div class="sc-empty-stage">
-                <span class="material-icons">hub</span>
-                <h5 class="fw-bold text-dark mb-2">目前尚未有已完成計算之 CPM 圖表</h5>
-                <p class="text-secondary small mb-3">
-                    請點擊下方按鈕開啟 GoJS 互動式 CPM 網圖編輯器，設定各工項天數、比率與前後置連結後點選「送出雲端計算並儲存」。
-                </p>
-                <button type="button" class="btn sc-btn sc-btn-primary open_cpm">
-                    <i class="material-icons">edit</i>
-                    開啟 CPM 網圖編輯器
-                </button>
-            </div>
-        {% endif %}
-    </div>
-</div>
+        <!-- View 2: In-Page Embedded Gantt Chart -->
+        <section id="view-gantt" class="sc-view-pane">
+            <iframe id="iframe-gantt" class="sc-embed-iframe" title="甘特圖檢視" data-src="/schedule/gantt_diagram/?version_id={{ version.id }}&embed=1"></iframe>
+        </section>
 
-<!-- S-Curve Overlay -->
-<div id="div_s_curve_background" style="display:none;position:fixed; top:0px;right:0px;width:100%; height: 100%; z-index:998; background-color: rgba(15, 23, 42, 0.72); backdrop-filter: blur(3px);">
-</div>
-
-<div id="div_s_curve" style="display:none;position:fixed; top:0px; width:100%; height: 100%; z-index:1000; left: 0px;">
-    <div align="center" style="height: 100%;">
-        <div class="sc-scurve-card">
-            <div class="sc-scurve-header">
-                <div class="fw-bold d-flex align-items-center gap-2 text-dark">
-                    <span class="material-icons text-primary">show_chart</span>
-                    預定進度 S 曲線圖
+        <!-- View 3: In-Page S-Curve View (reuses #div_s_curve & #canvas for item_gantt.js) -->
+        <section id="view-scurve" class="sc-view-pane">
+            <div id="div_s_curve" class="sc-scurve-inline">
+                <div class="sc-scurve-inline-header">
+                    <div class="fw-bold d-flex align-items-center gap-2 text-dark">
+                        <span class="material-icons text-primary">show_chart</span>
+                        預定進度 S 曲線圖
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn sc-btn sc-btn-primary py-1 px-3" id="save-image-btn">
+                            <span class="material-icons">download</span>另存圖片
+                        </button>
+                    </div>
                 </div>
-                <div class="d-flex gap-2">
-                    <button class="btn sc-btn sc-btn-primary" id="save-image-btn">
-                        <span class="material-icons">download</span>另存圖片
-                    </button>
-                    <button class="btn sc-btn btn-outline-danger" onclick="$('#div_s_curve').hide();$('#div_s_curve_background').hide();">
-                        <span class="material-icons">close</span>關閉顯示
-                    </button>
+                <div id="div_canvas" class="sc-scurve-inline-body">
+                    <canvas id="canvas" class="bg-white"></canvas>
                 </div>
             </div>
-            <div id="div_canvas" style="width:100%; flex: 1 1 auto; padding: 1rem; background-color: white;">
-                <canvas id="canvas" class="bg-white"></canvas>
-            </div>
-        </div>
+        </section>
     </div>
 </div>
 
@@ -415,4 +438,99 @@
         </div>
     </div>
 </div>
+
+<script>
+(function () {
+    var activeView = 'cpm';
+    var isEditingCpm = false;
+    var ganttLoaded = false;
+
+    function getDuration() {
+        return parseInt($('#version_duration').text(), 10) || 0;
+    }
+
+    function postToCpm(payload) {
+        var frame = document.getElementById('iframe-cpm');
+        if (frame && frame.contentWindow) {
+            frame.contentWindow.postMessage(payload, window.location.origin);
+        }
+    }
+
+    function setEditMode(editable) {
+        if (editable && getDuration() <= 0) {
+            Lobibox.notify('warning', {
+                title: '系統訊息',
+                msg: '請先設定此草稿之目標總天數'
+            });
+            return;
+        }
+        isEditingCpm = Boolean(editable);
+        if (isEditingCpm && activeView !== 'cpm') {
+            switchView('cpm');
+        }
+        var $btn = $('#btn-toggle-editor');
+        if (isEditingCpm) {
+            $btn.removeClass('sc-btn-primary').addClass('sc-btn-success-solid');
+            $('#btn-toggle-editor-icon').text('check_circle');
+            $('#btn-toggle-editor-text').text('完成編輯（切回唯讀）');
+        } else {
+            $btn.removeClass('sc-btn-success-solid').addClass('sc-btn-primary');
+            $('#btn-toggle-editor-icon').text('hub');
+            $('#btn-toggle-editor-text').text('編輯網圖');
+        }
+        postToCpm({ type: 'cpm:set-edit-mode', editable: isEditingCpm });
+    }
+
+    function switchView(target) {
+        if ((target === 'gantt' || target === 'scurve') && getDuration() <= 0) {
+            Lobibox.notify('warning', {
+                title: '系統訊息',
+                msg: '請先設定此草稿之目標總天數'
+            });
+            return;
+        }
+
+        activeView = target;
+        $('.sc-view-pane').removeClass('active');
+        $('#view-' + target).addClass('active');
+
+        $('.sc-segmented-btn').removeClass('active').attr('aria-selected', 'false');
+        $('.sc-segmented-btn[data-view="' + target + '"]').addClass('active').attr('aria-selected', 'true');
+
+        $('#cpm-canvas-controls').toggle(target === 'cpm');
+
+        if (target === 'gantt' && !ganttLoaded) {
+            var $gf = $('#iframe-gantt');
+            $gf.attr('src', $gf.data('src'));
+            ganttLoaded = true;
+        }
+    }
+
+    $(document).ready(function () {
+        // Segmented tabs (zero popups!)
+        $('#tab-cpm').on('click', function () { switchView('cpm'); });
+        $('#tab-gantt').on('click', function () { switchView('gantt'); });
+
+        // S-curve tab: switch view in-page; item_gantt.js #draw_s_curve click handler will load chart data
+        $('#draw_s_curve').on('click', function () {
+            if (getDuration() > 0) {
+                switchView('scurve');
+            }
+        });
+
+        // Toggle same GoJS diagram between Read-Only View Mode and Edit Mode
+        $('#btn-toggle-editor').on('click', function () {
+            setEditMode(!isEditingCpm);
+        });
+
+        // Wire KPI info bar controls directly to the unified GoJS diagram
+        $('#toggle-critical-only').on('change', function () {
+            postToCpm({ type: 'cpm:set-critical-only', enabled: this.checked });
+        });
+        $('#btn-auto-layout').on('click', function () {
+            postToCpm({ type: 'cpm:auto-layout' });
+        });
+    });
+})();
+</script>
 {% endblock body %}

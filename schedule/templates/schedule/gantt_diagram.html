@@ -23,6 +23,7 @@
     <script src="{% static 'schedule/bootstrap5/js/bootstrap.bundle.min.js' %}"></script>
     <script type="text/javascript" src="{% static 'schedule/plugin/lobibox-1.2.4/js/lobibox.js' %}"></script>
     <script src="{% static 'schedule/plugin/Chart.js/moment.js' %}"></script>
+    <script src="{% static 'schedule/plugin/Chart.js/Chart2.4.bundle.js' %}"></script>
     <script src="{% static 'schedule/plugin/vue/vue.min.js' %}"></script>
     <script src="{% static 'schedule/js/base.js' %}"></script>
 
@@ -60,6 +61,7 @@
 
     <script type="text/javascript">
         var edit = {% if edit %}true{% else %}false{% endif %};
+        var is_cpm_constrained = {% if version.schedule_setting_type == 1 %}true{% else %}false{% endif %};
         var schedule_use_money_type = 'False';
         var root_item_id = '{{ root_item.id }}';
         var version_id = '{{ version.id }}';
@@ -75,10 +77,14 @@
                         text: "{{ i.name|escapejs }}",
                         start_date: "{{ i.start_date|date:'d-m-Y' }}",
                         parent: "{{ i.uplevel.id|default:'' }}",
-                        es: "{{ i.es }}",
+                        es: "{{ i.cpm_min_start }}",
                         ef: "{{ i.ef }}",
-                        duration_old: {{ i.get_delta }},
-                        duration: {{ i.get_delta }},
+                        cpm_min_start: {{ i.cpm_min_start }},
+                        cpm_max_end: {{ i.cpm_max_end }},
+                        cpm_tf: {{ i.cpm_tf }},
+                        cpm_duration: {{ i.cpm_duration }},
+                        duration_old: {{ i.cpm_duration }},
+                        duration: {{ i.cpm_duration }},
                         unit_price: {{ i.unit_price }},
                         cp: '{{ i.cp }}' == 'True',
                         open: true,
@@ -106,6 +112,7 @@
         {% csrf_token %}
 
         <div class="header" style="flex: 0 0 auto;">
+            {% if not embed %}
             <!-- Dark Topbar -->
             <div class="sc-gantt-topbar">
                 <div class="d-flex align-items-center gap-2">
@@ -121,6 +128,7 @@
                     </button>
                 </div>
             </div>
+            {% endif %}
 
             <!-- Compact Control Bar -->
             <div class="sc-gantt-subbar">
@@ -139,12 +147,28 @@
                 </div>
 
                 <div class="d-flex flex-wrap align-items-center gap-2">
+                    {% if version.schedule_setting_type == 1 %}
+                    <button
+                        class="btn btn-sm sc-btn-outline-clean sc-btn-sm"
+                        type="button"
+                        id="open-cpm-preset-modal-btn"
+                        data-bs-toggle="modal"
+                        data-bs-target="#cpm_quick_schedule_modal"
+                        title="批次調整所有非要徑工項排程（需確認才套用）"
+                    >
+                        <span class="material-icons" style="font-size:16px;">tune</span>
+                        <span>快速排程</span>
+                    </button>
+                    {% endif %}
                     <div class="d-flex align-items-center gap-1">
-                        <button class="btn btn-sm btn-primary change_scale" type="button" scale="1">日檢視</button>
-                        <button class="btn btn-sm btn-info change_scale" type="button" scale="7">7日檢視</button>
-                        <button class="btn btn-sm btn-info change_scale" type="button" scale="10">10天檢視</button>
-                        <button class="btn btn-sm btn-info change_scale" type="button" scale="15">15天檢視</button>
-                        <button class="btn btn-sm btn-info change_scale" type="button" scale="30">30天檢視</button>
+                        <span class="small text-secondary fw-semibold">檢視尺度：</span>
+                        <select id="gantt_scale_select" class="form-select form-select-sm" style="width:auto;min-width:105px;border-radius:8px;font-weight:600;font-size:0.82rem;">
+                            <option value="1" selected>日檢視</option>
+                            <option value="7">7日檢視</option>
+                            <option value="10">10天檢視</option>
+                            <option value="15">15天檢視</option>
+                            <option value="30">30天檢視</option>
+                        </select>
                     </div>
 
                     <div id="div_update_dutton" style="display:none;" class="ms-2">
@@ -162,10 +186,83 @@
         <div class="box d-flex flex-column" style="flex: 1 1 100%; height: 100%; overflow: auto; background: #ffffff;">
             <div class="sc-gantt-notice" style="flex: 0 0 auto;">
                 <span class="material-icons" style="font-size:16px;">info</span>
-                <span>可雙擊工項編輯或直接拖拉進度橫條調整日期、間隔與前後置連線；修改完成後請點擊右上方出現的「送出資料並更新」按鈕。</span>
+                {% if version.schedule_setting_type == 1 %}
+                    <span><strong>CPM 限制模式</strong>：要徑工項（紅，TF=0）已鎖定；非要徑工項（藍，TF&gt;0）僅可於 <code>[ES, LF]</code> 浮時區間內左右平移，不可變更工期或前後置連線。</span>
+                {% else %}
+                    <span>可雙擊工項編輯或直接拖拉進度橫條調整日期、間隔與前後置連線；修改完成後請點擊右上方出現的「送出資料並更新」按鈕。</span>
+                {% endif %}
             </div>
-            <div class="row content mx-0" id="gantt_here" style="flex: 1 1 100%; height: 100%; width:100%;"></div>
+            <div class="row content mx-0" id="gantt_here" style="flex: 1 1 62%; min-height: 220px; width:100%;"></div>
+
+            <!-- Live-Linked S-Curve Dock Panel -->
+            <div id="gantt-scurve-dock" class="sc-gantt-scurve-dock" style="flex: 0 0 auto;">
+                <div id="gantt-scurve-resizer" class="sc-gantt-scurve-resizer" title="上下拖曳調整 S 曲線面板高度"></div>
+                <div class="sc-gantt-scurve-bar">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="material-icons text-primary" style="font-size:18px;">show_chart</span>
+                        <span class="fw-bold text-dark" style="font-size:0.85rem;">即時連動預定進度 S 曲線</span>
+                        {% if version.schedule_setting_type == 1 %}
+                            <span class="sc-scurve-legend-inline">
+                                <span class="sc-leg-item"><i class="sc-leg-line is-cur"></i>目前排程</span>
+                                <span class="sc-leg-item"><i class="sc-leg-line is-early"></i>最早 ES</span>
+                                <span class="sc-leg-item"><i class="sc-leg-line is-late"></i>最晚 LS</span>
+                            </span>
+                        {% endif %}
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="d-flex align-items-center gap-1">
+                            <span class="small text-secondary fw-semibold">高度占比：</span>
+                            <select id="gantt_scurve_ratio" class="form-select form-select-sm" style="width:auto;min-width:84px;border-radius:7px;font-size:0.78rem;font-weight:600;padding-top:2px;padding-bottom:2px;">
+                                <option value="25">25%</option>
+                                <option value="35" selected>35%</option>
+                                <option value="50">50%</option>
+                                <option value="65">65%</option>
+                            </select>
+                        </div>
+                        <button type="button" class="btn btn-sm sc-btn-outline-clean sc-btn-sm py-0 px-2" id="toggle-gantt-scurve">
+                            <span class="material-icons" style="font-size:16px;" id="toggle-gantt-scurve-icon">expand_more</span>
+                            <span id="toggle-gantt-scurve-text">收合</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="gantt-scurve-body" class="sc-gantt-scurve-body">
+                    <canvas id="gantt_live_scurve_canvas"></canvas>
+                </div>
+            </div>
         </div>
     </div>
+
+    {% if version.schedule_setting_type == 1 %}
+    <!-- Quick Schedule Preset Modal (prevents accidental overwrite) -->
+    <div class="modal fade" id="cpm_quick_schedule_modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title d-flex align-items-center gap-2">
+                        <span class="material-icons text-primary">tune</span>
+                        快速排程設定
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-light border small mb-3">
+                        套用後將會覆蓋目前所有<strong>非要徑工項</strong>的手動微調位置（要徑工項不受影響），並即時更新下方 S 曲線。
+                    </div>
+                    <label class="form-label fw-semibold" for="cpm_preset_select">請選擇非要徑工項排程方式</label>
+                    <select id="cpm_preset_select" class="form-select">
+                        <option value="lslf" selected>[最晚] 完成時間（較易讓施工進度超前）</option>
+                        <option value="esef">[最早] 完成時間（較易造成施工進度落後）</option>
+                        <option value="avg">[平均] 開始時間（取最早 + 最晚平均）</option>
+                        <option value="full">[最長] 施工時間（取最早開始、最晚結束）</option>
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn sc-btn sc-btn-primary" id="apply_cpm_preset_btn">確定套用</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </body>
 </html>

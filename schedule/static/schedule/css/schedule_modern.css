@@ -846,3 +846,800 @@ html, body {
         padding: 1.1rem;
     }
 }
+
+
+/* ==========================================================================
+   Phase 1 + 2: Unified Zero-Popup CPM Workspace (item_cpm.html)
+   Scoped classes so item_gantt.html and manage_schedule.html stay unaffected.
+   ========================================================================== */
+
+.sc-topbar-light {
+    background: #ffffff;
+    border-bottom: 1px solid var(--sc-slate-200);
+    padding: 0.55rem 1.15rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    z-index: 35;
+}
+
+.sc-topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    flex: 1 1 0;
+}
+
+.sc-topbar-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
+.sc-topbar-right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.45rem;
+    flex: 1 1 0;
+}
+
+.sc-icon-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    color: var(--sc-navy-700);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    transition: background-color 0.15s ease, color 0.15s ease;
+    flex-shrink: 0;
+}
+
+.sc-icon-btn:hover {
+    background: var(--sc-slate-100);
+    color: var(--sc-navy-900);
+}
+
+.sc-icon-btn-sm {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    color: var(--sc-slate-500);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.sc-icon-btn-sm:hover {
+    background: var(--sc-slate-100);
+    color: var(--sc-primary);
+}
+
+.sc-icon-btn-sm .material-icons {
+    font-size: 16px;
+}
+
+.sc-project-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--sc-navy-900);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sc-draft-badge {
+    background: var(--sc-slate-100);
+    color: var(--sc-slate-600);
+    border: 1px solid var(--sc-slate-200);
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    flex-shrink: 0;
+}
+
+/* Central Segmented Switcher */
+.sc-segmented {
+    display: inline-flex;
+    align-items: center;
+    background: var(--sc-slate-100);
+    border: 1px solid var(--sc-slate-200);
+    border-radius: 10px;
+    padding: 3px;
+    gap: 2px;
+}
+
+.sc-segmented-btn {
+    border: none;
+    background: transparent;
+    color: var(--sc-slate-600);
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.32rem 0.95rem;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: all 0.16s ease;
+    white-space: nowrap;
+}
+
+.sc-segmented-btn:hover {
+    color: var(--sc-navy-900);
+}
+
+.sc-segmented-btn.active {
+    background: #ffffff;
+    color: var(--sc-navy-900);
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.1);
+}
+
+/* Clean Outline Buttons */
+.sc-btn-outline-clean {
+    background: #ffffff;
+    border: 1px solid var(--sc-slate-200);
+    color: var(--sc-navy-700);
+    border-radius: 9px !important;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.4rem 0.8rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    transition: all 0.15s ease;
+}
+
+.sc-btn-outline-clean:hover {
+    background: var(--sc-slate-50);
+    border-color: var(--sc-slate-300);
+    color: var(--sc-navy-900);
+}
+
+.sc-btn-outline-clean.sc-btn-sm {
+    padding: 0.25rem 0.65rem;
+    font-size: 0.8rem;
+}
+
+.sc-more-btn {
+    padding: 0.4rem 0.55rem;
+}
+
+.sc-more-btn .material-icons {
+    font-size: 19px;
+}
+
+.sc-btn-success-solid {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+    border: none;
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.28);
+}
+
+.sc-btn-success-solid:hover {
+    background: linear-gradient(135deg, #047857 0%, #065f46 100%);
+    color: #ffffff;
+}
+
+.sc-clean-dropdown {
+    border: 1px solid var(--sc-slate-200);
+    border-radius: 11px;
+    box-shadow: var(--sc-shadow-md);
+    padding: 0.4rem;
+    font-size: 0.86rem;
+}
+
+.sc-clean-dropdown .dropdown-item {
+    border-radius: 7px;
+    padding: 0.48rem 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--sc-navy-800);
+}
+
+.sc-clean-dropdown .dropdown-item .material-icons {
+    font-size: 18px;
+}
+
+.sc-clean-dropdown .dropdown-item:hover {
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+/* Single-Row KPI Info Strip */
+.sc-cpm-workspace {
+    padding: 0;
+    background: #ffffff;
+    overflow: hidden !important;
+}
+
+.sc-cpm-infobar {
+    background: #f8fafc;
+    border-bottom: 1px solid var(--sc-slate-200);
+    padding: 0.48rem 1.15rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-size: 0.84rem;
+    color: var(--sc-slate-600);
+}
+
+.sc-infobar-left {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.sc-infobar-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.sc-info-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.sc-info-item strong {
+    color: var(--sc-navy-900);
+    font-weight: 700;
+}
+
+.sc-info-sep {
+    width: 1px;
+    height: 15px;
+    background: var(--sc-slate-300);
+}
+
+.sc-inline-edit-btn {
+    border: none;
+    background: transparent;
+    color: var(--sc-slate-500);
+    padding: 2px 4px;
+    border-radius: 5px;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.sc-inline-edit-btn:hover {
+    background: #e0f2fe;
+    color: var(--sc-primary);
+}
+
+.sc-inline-edit-btn .material-icons {
+    font-size: 15px;
+}
+
+.sc-weight-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.sc-weight-pill.is-valid {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.sc-weight-pill.is-invalid {
+    background: #ffe4e6;
+    color: #be123c;
+}
+
+/* Critical Path Only Toggle Switch */
+.sc-toggle-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.sc-toggle-input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.sc-toggle-track {
+    width: 36px;
+    height: 20px;
+    background: var(--sc-slate-300);
+    border-radius: 999px;
+    position: relative;
+    transition: background-color 0.18s ease;
+}
+
+.sc-toggle-track::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+    transition: transform 0.18s ease;
+}
+
+.sc-toggle-input:checked + .sc-toggle-track {
+    background: var(--sc-primary);
+}
+
+.sc-toggle-input:checked + .sc-toggle-track::after {
+    transform: translateX(16px);
+}
+
+.sc-toggle-label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--sc-navy-700);
+}
+
+.sc-warning-strip {
+    background: #fffbeb;
+    border-bottom: 1px solid #fde68a;
+    color: #92400e;
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 0.4rem 1.15rem;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+/* Unified Multi-View Stage */
+.sc-cpm-stage-shell {
+    flex: 1 1 100%;
+    position: relative;
+    overflow: hidden;
+    background-color: #f8fafc;
+    background-image: radial-gradient(#cbd5e1 1.1px, transparent 1.1px);
+    background-size: 20px 20px;
+}
+
+.sc-view-pane {
+    display: none;
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+.sc-view-pane.active {
+    display: flex;
+    flex-direction: column;
+}
+
+.sc-cpm-canvas-mount {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
+.sc-cpm-svg {
+    display: block;
+    cursor: grab;
+    user-select: none;
+}
+
+.sc-cpm-svg.is-panning {
+    cursor: grabbing;
+}
+
+.sc-cpm-svg.sc-critical-only .cpm-node.is-noncritical,
+.sc-cpm-svg.sc-critical-only .cpm-edge.is-noncritical {
+    opacity: 0.15;
+    transition: opacity 0.2s ease;
+}
+
+.sc-cpm-svg .cpm-node,
+.sc-cpm-svg .cpm-edge {
+    transition: opacity 0.2s ease;
+}
+
+/* Bottom-Left Legend + Mini PDM 6-Box Reference */
+.sc-legend-card {
+    position: absolute;
+    left: 16px;
+    bottom: 16px;
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--sc-slate-200);
+    border-radius: 12px;
+    box-shadow: var(--sc-shadow-md);
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    z-index: 10;
+}
+
+.sc-legend-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--sc-navy-900);
+    margin-bottom: 6px;
+}
+
+.sc-legend-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.76rem;
+    color: var(--sc-slate-600);
+    margin-bottom: 4px;
+    white-space: nowrap;
+}
+
+.sc-legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.sc-legend-swatch.is-critical {
+    background: #e11d48;
+}
+
+.sc-legend-swatch.is-noncritical {
+    background: #f1f5f9;
+    border: 1.5px solid #38bdf8;
+}
+
+.sc-legend-pdm-mini {
+    width: 168px;
+    border: 1px solid var(--sc-slate-300);
+    border-radius: 8px;
+    overflow: hidden;
+    background: #ffffff;
+    font-size: 0.68rem;
+    color: var(--sc-navy-800);
+}
+
+.pdm-mini-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    background: var(--sc-slate-100);
+    text-align: center;
+    font-weight: 600;
+}
+
+.pdm-mini-row span {
+    padding: 3px 2px;
+    border-right: 1px solid var(--sc-slate-200);
+}
+
+.pdm-mini-row span:last-child {
+    border-right: none;
+}
+
+.pdm-mini-top {
+    border-bottom: 1px solid var(--sc-slate-200);
+}
+
+.pdm-mini-bot {
+    border-top: 1px solid var(--sc-slate-200);
+}
+
+.pdm-mini-mid {
+    padding: 4px 6px;
+    text-align: center;
+}
+
+.pdm-mini-name {
+    font-weight: 700;
+    color: var(--sc-navy-900);
+}
+
+.pdm-mini-rate {
+    color: var(--sc-slate-500);
+    font-size: 0.65rem;
+}
+
+/* Bottom-Right Zoom Toolbar & Minimap */
+.sc-bottom-right-controls {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    z-index: 10;
+}
+
+.sc-zoom-toolbar {
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid var(--sc-slate-200);
+    border-radius: 10px;
+    box-shadow: var(--sc-shadow-sm);
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 5px;
+    gap: 2px;
+}
+
+.sc-zoom-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    border-radius: 7px;
+    color: var(--sc-navy-700);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.sc-zoom-btn:hover {
+    background: var(--sc-slate-100);
+    color: var(--sc-primary);
+}
+
+.sc-zoom-btn .material-icons {
+    font-size: 17px;
+}
+
+.sc-zoom-pct {
+    border: none;
+    background: transparent;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--sc-navy-800);
+    min-width: 46px;
+    text-align: center;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 6px;
+}
+
+.sc-zoom-pct:hover {
+    background: var(--sc-slate-100);
+}
+
+.sc-zoom-sep {
+    width: 1px;
+    height: 16px;
+    background: var(--sc-slate-200);
+    margin: 0 2px;
+}
+
+.sc-minimap-card {
+    width: 148px;
+    height: 86px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid var(--sc-slate-200);
+    border-radius: 10px;
+    box-shadow: var(--sc-shadow-sm);
+    padding: 6px;
+    overflow: hidden;
+}
+
+/* Empty Stage Wrapper */
+.sc-empty-wrap {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+}
+
+/* Embedded Iframes (Gantt & GoJS Editor) */
+.sc-embed-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: #ffffff;
+    display: block;
+}
+
+/* Embedded GoJS Topbar (light compact bar inside iframe) */
+.sc-cpm-topbar.sc-cpm-topbar-embed {
+    background: #f8fafc !important;
+    color: var(--sc-navy-800) !important;
+    border-bottom: 1px solid var(--sc-slate-200) !important;
+    box-shadow: none !important;
+    padding: 0.45rem 1rem !important;
+}
+
+.sc-cpm-topbar-embed .sc-dark-btn {
+    background: #ffffff;
+    border: 1px solid var(--sc-slate-200);
+    color: var(--sc-navy-700);
+}
+
+.sc-cpm-topbar-embed .sc-dark-btn:hover {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+}
+
+/* In-Page S-Curve Panel */
+.sc-scurve-inline {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #ffffff;
+}
+
+.sc-scurve-inline-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.65rem 1.25rem;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--sc-slate-200);
+}
+
+.sc-scurve-inline-body {
+    flex: 1 1 auto;
+    padding: 1.25rem 1.5rem;
+    position: relative;
+    min-height: 360px;
+}
+
+@media (max-width: 992px) {
+    .sc-topbar-light {
+        flex-wrap: wrap;
+    }
+    .sc-topbar-center {
+        order: 3;
+        width: 100%;
+        justify-content: center;
+    }
+    .sc-minimap-card {
+        display: none;
+    }
+}
+
+/* CPM-Constrained Gantt Bar Styles */
+.gantt_task_line.gantt_task_critical {
+    background-color: #e11d48 !important;
+    border-color: #be123c !important;
+    cursor: not-allowed !important;
+}
+
+.gantt_task_line.gantt_task_float {
+    background-color: #2563eb !important;
+    border-color: #1d4ed8 !important;
+    cursor: ew-resize !important;
+}
+
+/* Light-Blue [ES, LF] Scrollbar-Track Style Float Window (behind task bar on Z-axis) */
+.gantt_cpm_float_layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.gantt_bars_area .gantt_task_line {
+    z-index: 2;
+}
+
+.gantt_cpm_float_window {
+    position: absolute;
+    background: rgba(147, 197, 253, 0.38);
+    border: 1.5px solid #93c5fd;
+    border-radius: 6px;
+    box-sizing: border-box;
+    box-shadow: inset 0 1px 2px rgba(37, 99, 235, 0.12);
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Live-Linked S-Curve Dock inside Gantt Page */
+.sc-gantt-scurve-dock {
+    border-top: 2px solid var(--sc-slate-200);
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+}
+
+.sc-gantt-scurve-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.42rem 1rem;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--sc-slate-200);
+}
+
+.sc-scurve-legend-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.85rem;
+    margin-left: 0.6rem;
+    font-size: 0.76rem;
+    color: var(--sc-slate-600);
+}
+
+.sc-leg-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.sc-leg-line {
+    display: inline-block;
+    width: 18px;
+    height: 0;
+    border-top-width: 2.5px;
+    border-top-style: solid;
+}
+
+.sc-leg-line.is-cur { border-color: #2563eb; }
+.sc-leg-line.is-early { border-color: #10b981; border-top-style: dashed; }
+.sc-leg-line.is-late { border-color: #f59e0b; border-top-style: dashed; }
+
+.sc-gantt-scurve-body {
+    height: 190px;
+    padding: 0.6rem 1.1rem 0.5rem;
+    position: relative;
+    background: #ffffff;
+}
+
+/* Quick Schedule Preset Buttons in CPM-Constrained Gantt */
+.sc-preset-btn {
+    background: #ffffff;
+    border: 1px solid var(--sc-slate-300);
+    color: var(--sc-navy-700);
+    border-radius: 8px !important;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.24rem 0.6rem;
+    transition: all 0.15s ease;
+}
+
+.sc-preset-btn:hover {
+    background: #eff6ff;
+    border-color: #60a5fa;
+    color: #1d4ed8;
+}
+
+.sc-preset-btn.active {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff;
+    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+}
+
+.sc-gantt-scurve-resizer {
+    height: 5px;
+    background: transparent;
+    cursor: ns-resize;
+    transition: background-color 0.15s ease;
+}
+
+.sc-gantt-scurve-resizer:hover {
+    background: rgba(37, 99, 235, 0.28);
+}

@@ -106,7 +106,9 @@ const cpmApp = new Vue({
     el: "#cpm-graph",
     delimiters: ["[[", "]]"],
     data: {
-        is_graph_edit: true,
+        is_graph_edit: (typeof INITIAL_READONLY !== 'undefined' && INITIAL_READONLY) ? false : true,
+        is_embed: (typeof IS_EMBED !== 'undefined' && IS_EMBED) ? true : false,
+        is_critical_only: false,
         is_edited: false,
         schedule_version_id: SCHEDULE_VERSION_ID,
 
@@ -701,6 +703,8 @@ const cpmApp = new Vue({
             * init graph
             **/
             vm.diagram = Diagram;
+            vm.apply_edit_mode(vm.is_graph_edit);
+            vm.bind_parent_bridge();
             vm.node_data_array = JSON.parse(JSON.stringify(vm.origin_node_data_array));
             vm.link_data_array = JSON.parse(JSON.stringify(vm.origin_link_data_array));
 
@@ -2077,6 +2081,85 @@ const cpmApp = new Vue({
                 });
 
                 resolve(vm.diagram.layout);
+            });
+        },
+        apply_edit_mode(editable){
+            const vm = this;
+            vm.is_graph_edit = Boolean(editable);
+            if(vm.diagram){
+                vm.diagram.isReadOnly = !vm.is_graph_edit;
+                vm.diagram.allowMove = vm.is_graph_edit;
+                vm.diagram.allowLink = vm.is_graph_edit;
+                vm.diagram.allowRelink = vm.is_graph_edit;
+                vm.diagram.allowDelete = vm.is_graph_edit;
+                vm.diagram.allowTextEdit = vm.is_graph_edit;
+                vm.diagram.allowInsert = vm.is_graph_edit;
+                vm.diagram.allowCopy = vm.is_graph_edit;
+                vm.diagram.allowHorizontalScroll = true;
+                vm.diagram.allowVerticalScroll = true;
+                vm.diagram.allowZoom = true;
+                vm.diagram.allowSelect = true;
+                vm.$nextTick(() => {
+                    if(vm.diagram){
+                        vm.diagram.requestUpdate();
+                    }
+                });
+            }
+        },
+        set_critical_only(enabled){
+            const vm = this;
+            vm.is_critical_only = Boolean(enabled);
+            if(!vm.diagram) return;
+            vm.diagram.skipsUndoManager = true;
+            vm.diagram.nodes.each(function(node){
+                const d = node.data || {};
+                const isCrit = Boolean(d.critical) || d.key === 'start' || d.key === 'end';
+                node.opacity = (vm.is_critical_only && !isCrit) ? 0.16 : 1.0;
+            });
+            vm.diagram.links.each(function(link){
+                const fromData = link.fromNode && link.fromNode.data ? link.fromNode.data : {};
+                const toData = link.toNode && link.toNode.data ? link.toNode.data : {};
+                const fromCrit = Boolean(fromData.critical) || fromData.key === 'start' || fromData.key === 'end';
+                const toCrit = Boolean(toData.critical) || toData.key === 'start' || toData.key === 'end';
+                link.opacity = (vm.is_critical_only && !(fromCrit && toCrit)) ? 0.14 : 1.0;
+            });
+            vm.diagram.skipsUndoManager = false;
+        },
+        async auto_layout_view(){
+            const vm = this;
+            if(!vm.diagram) return;
+            if(vm.is_graph_edit){
+                vm.rerender_node_position();
+            } else {
+                const prevReadOnly = vm.diagram.isReadOnly;
+                vm.diagram.isReadOnly = false;
+                try{
+                    await vm.change_layout_layered_graph();
+                    vm.diagram.zoomToFit();
+                } finally {
+                    vm.diagram.isReadOnly = prevReadOnly;
+                }
+            }
+        },
+        bind_parent_bridge(){
+            const vm = this;
+            if(vm._parentBridgeBound) return;
+            vm._parentBridgeBound = true;
+            window.addEventListener('message', function(ev){
+                if(ev.origin !== window.location.origin) return;
+                const msg = ev.data || {};
+                if(msg.type === 'cpm:set-edit-mode'){
+                    vm.apply_edit_mode(msg.editable);
+                } else if(msg.type === 'cpm:set-critical-only'){
+                    vm.set_critical_only(msg.enabled);
+                } else if(msg.type === 'cpm:auto-layout'){
+                    vm.auto_layout_view();
+                } else if(msg.type === 'cpm:zoom' && vm.diagram){
+                    if(msg.action === 'in') vm.diagram.commandHandler.increaseZoom();
+                    else if(msg.action === 'out') vm.diagram.commandHandler.decreaseZoom();
+                    else if(msg.action === 'reset') vm.diagram.commandHandler.resetZoom();
+                    else if(msg.action === 'fit') vm.diagram.zoomToFit();
+                }
             });
         },
         async rerender_node_position(){

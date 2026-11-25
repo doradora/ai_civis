@@ -115,6 +115,7 @@ class Version_Schedule(M.Model):
     file = M.FileField(upload_to=_VERSION_SCHEDULE_FILE, null=True, blank=True)
     release_json = M.TextField(verbose_name='release json狀態', default='{}')
     cpm_release = M.BooleanField(verbose_name='CPM是否已發布(若更動為否)', default=False)
+    cpm_locked = M.BooleanField(verbose_name='CPM是否已鎖定(鎖定後才可使用甘特圖)', default=False)
     schedule_setting_type = M.IntegerField(
         verbose_name='預定進度設定方法',
         default=0,
@@ -143,6 +144,64 @@ class Version_Schedule(M.Model):
     def total_weight(self):
         total = self.scheduleitem_set.exclude(kind_id=10).aggregate(Sum('unit_price'))['unit_price__sum']
         return total or decimal.Decimal('0')
+
+    def get_cpm_lock_checklist(self):
+        """檢查 CPM 網圖是否符合鎖定前置條件（鎖定後才開放甘特圖與 S 曲線）。"""
+        leaf_items = list(self.scheduleitem_set.exclude(uplevel=None).exclude(kind_id=10))
+        try:
+            parsed_links = json.loads(self.cpm_link or '[]')
+            if not isinstance(parsed_links, list):
+                parsed_links = []
+        except Exception:
+            parsed_links = []
+
+        duration_val = int(self.duration or 0)
+        weight_total = float(sum((float(i.unit_price or 0) for i in leaf_items), 0.0))
+        weight_diff = round_fix(weight_total - 100.0, 5)
+        cpm_max_day = max((int(i.lf or i.ef or 0) for i in leaf_items), default=0)
+
+        duration_ok = duration_val > 0
+        items_ok = len(leaf_items) > 0
+        cpm_calc_ok = bool(self.cpm_release) and len(parsed_links) > 0
+        weight_ok = abs(weight_total - 100.0) < 1e-4
+
+        checks = [
+            {
+                'key': 'duration',
+                'label': '已設定目標總工期',
+                'ok': duration_ok,
+                'detail': f'{duration_val} 天' if duration_ok else '尚未設定（須大於 0 天）',
+            },
+            {
+                'key': 'items',
+                'label': '已建立施工工項',
+                'ok': items_ok,
+                'detail': f'共 {len(leaf_items)} 項' if items_ok else '尚未建立任何工項',
+            },
+            {
+                'key': 'cpm_calc',
+                'label': '已完成 CPM 要徑計算與發佈',
+                'ok': cpm_calc_ok,
+                'detail': f'已完成（{len(parsed_links)} 條連線，最長 {cpm_max_day} 天）' if cpm_calc_ok else '請先進入「編輯網圖」並點擊「計算並發佈」',
+            },
+            {
+                'key': 'weight',
+                'label': '所有工項權重總計等於 100%',
+                'ok': weight_ok,
+                'detail': '100%' if weight_ok else f'目前 {round_fix(weight_total, 2)}%（差額 {"+" if weight_diff > 0 else ""}{weight_diff}%）',
+            },
+        ]
+        can_lock = duration_ok and items_ok and cpm_calc_ok and weight_ok
+        duration_mismatch = (cpm_max_day > 0 and duration_val > 0 and cpm_max_day != duration_val)
+        return {
+            'can_lock': can_lock,
+            'cpm_locked': bool(self.cpm_locked),
+            'checks': checks,
+            'cpm_max_day': cpm_max_day,
+            'duration': duration_val,
+            'duration_mismatch': duration_mismatch,
+            'missing': [c['label'] + '：' + c['detail'] for c in checks if not c['ok']],
+        }
 
     def create_root_item(self):
         if self.scheduleitem_set.filter(uplevel=None).exists():
@@ -323,9 +382,9 @@ class Version_Schedule(M.Model):
         for si in schedule_items:
             es = si.es
             ef = si.ef
-            if self.schedule_setting_type == 1:  # CPM
-                es = si.ls + 1
-                ef = si.lf
+            if self.schedule_setting_type == 1:  # CPM：依目前甘特圖排程位置 (es+1 ~ ef) 計算
+                es = int(si.es or 0) + 1
+                ef = int(si.ef or 0)
             span = ef - es + 1
             if span <= 0:
                 continue
@@ -620,25 +679,29 @@ class Version_Schedule(M.Model):
         return data
 
     def update_to_100_progress(self):
-        """將進度直接調整到符合 100%"""
-        price = decimal.Decimal('100')
-        items = self.scheduleitem_set.all().exclude(kind_id=10)
-        if not items.exists():
+        """將進度依比例四捨五入至小數 2 位，並將尾差補齊至最大工項，確保總和精準為 100.00%"""
+        price = decimal.Decimal('100.00')
+        items = list(self.scheduleitem_set.all().exclude(kind_id=10).order_by('id'))
+        if not items:
             return False
-        item_sum = items.aggregate(Sum('unit_price'))['unit_price__sum'] or decimal.Decimal('0')
+        item_sum = sum((i.unit_price or decimal.Decimal('0') for i in items), decimal.Decimal('0'))
         if not item_sum:
             return False
 
-        rate = price / item_sum
-        items.update(unit_price=F('unit_price') * rate)
+        q = decimal.Decimal('0.01')
+        rounded_total = decimal.Decimal('0.00')
+        for i in items:
+            scaled = ((i.unit_price or decimal.Decimal('0')) * price / item_sum).quantize(q, rounding=decimal.ROUND_HALF_UP)
+            i.unit_price = scaled
+            rounded_total += scaled
 
-        new_item_sum = items.aggregate(Sum('unit_price'))['unit_price__sum'] or decimal.Decimal('0')
-        if new_item_sum != price:
-            delta = price - new_item_sum
-            item = items.order_by('-unit_price').first()
-            if item:
-                item.unit_price += delta
-                item.save()
+        delta = price - rounded_total
+        if delta != decimal.Decimal('0.00'):
+            target = max(items, key=lambda x: x.unit_price)
+            target.unit_price = (target.unit_price + delta).quantize(q, rounding=decimal.ROUND_HALF_UP)
+
+        for i in items:
+            i.save(update_fields=['unit_price'])
         return True
 
 

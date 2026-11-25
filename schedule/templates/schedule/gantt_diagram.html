@@ -55,7 +55,10 @@
         });
     </script>
 
+    {% if not cpm_not_locked %}
+    <script src="{% static 'schedule/js/adm_canvas.js' %}"></script>
     <script src="{% static 'schedule/js/gantt_diagram.js' %}"></script>
+    {% endif %}
 
     <title>甘特圖編輯 - {{ version.project_name }}</title>
 
@@ -98,9 +101,40 @@
             ];
 
         var item_links = JSON.parse('{{ item_links|escapejs }}');
+        var cpm_links_data = {{ cpm_links_json|default:"[]"|safe }};
+        var project_display_name = "{{ version.project_name|escapejs }}";
     </script>
 </head>
 <body>
+    {% if cpm_not_locked %}
+    <div class="sc-locked-gate-wrap">
+        <div class="sc-locked-gate-card">
+            <div class="sc-locked-gate-icon">
+                <span class="material-icons">lock</span>
+            </div>
+            <h5 class="fw-bold text-dark mb-2">尚未完成並鎖定 CPM 網圖，無法使用甘特圖</h5>
+            <p class="text-secondary small mb-3">
+                甘特圖以 CPM 網圖計算出的要徑與浮時 <code>[ES, LF]</code> 作為限制條件。請先完成以下項目並鎖定 CPM 網圖後，再進入甘特圖調整排程：
+            </p>
+            <ul class="sc-lock-checklist text-start mb-4">
+                {% for c in cpm_lock_checklist.checks %}
+                <li class="{% if c.ok %}is-ok{% else %}is-fail{% endif %}">
+                    <span class="material-icons">{% if c.ok %}check_circle{% else %}cancel{% endif %}</span>
+                    <div>
+                        <strong>{{ c.label }}</strong>
+                        <span class="text-secondary ms-1">（{{ c.detail }}）</span>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+            {% if not embed %}
+            <a href="/schedule/item_profile/{{ version.id }}/" class="btn sc-btn sc-btn-primary">
+                <span class="material-icons">hub</span>返回 CPM 網圖完成設定
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
     <div id="base-wrapper" class="d-flex flex-column h-100">
         <!-- Modern Loading Overlay -->
         <div id="loading" class="sc-loading-overlay">
@@ -148,6 +182,10 @@
 
                 <div class="d-flex flex-wrap align-items-center gap-2">
                     {% if version.schedule_setting_type == 1 %}
+                    <div class="sc-mini-segmented me-1" id="gantt-adm-switcher" role="group" aria-label="檢視切換">
+                        <button type="button" class="sc-mini-seg-btn active" data-subview="gantt" id="btn-subview-gantt">甘特圖</button>
+                        <button type="button" class="sc-mini-seg-btn" data-subview="adm" id="btn-subview-adm">ADM 箭線圖</button>
+                    </div>
                     <button
                         class="btn btn-sm sc-btn-outline-clean sc-btn-sm"
                         type="button"
@@ -160,7 +198,7 @@
                         <span>快速排程</span>
                     </button>
                     {% endif %}
-                    <div class="d-flex align-items-center gap-1">
+                    <div class="d-flex align-items-center gap-1" id="gantt-scale-wrap">
                         <span class="small text-secondary fw-semibold">檢視尺度：</span>
                         <select id="gantt_scale_select" class="form-select form-select-sm" style="width:auto;min-width:105px;border-radius:8px;font-weight:600;font-size:0.82rem;">
                             <option value="1" selected>日檢視</option>
@@ -193,6 +231,75 @@
                 {% endif %}
             </div>
             <div class="row content mx-0" id="gantt_here" style="flex: 1 1 62%; min-height: 220px; width:100%;"></div>
+
+            {% if version.schedule_setting_type == 1 %}
+            <!-- Live-Linked ADM Arrow Diagram Panel (same level as Gantt, reflects live Gantt adjustments!) -->
+            <div id="gantt-adm-panel" class="sc-adm-panel" style="display:none; flex: 1 1 62%; min-height: 220px; width:100%;">
+                <div class="sc-adm-toolbar">
+                    <div class="d-flex align-items-center gap-3 flex-wrap">
+                        <span class="badge rounded-pill bg-danger-subtle text-danger border border-danger-subtle px-2 py-1">
+                            ADM 箭線圖（與甘特圖即時連動）
+                        </span>
+
+                        <div class="d-flex align-items-center gap-2">
+                            <label for="adm-stretch-range" class="small text-secondary fw-semibold mb-0">橫向展開：</label>
+                            <input type="range" id="adm-stretch-range" min="0.6" max="3.0" step="0.1" value="1.0" style="width:110px;accent-color:#2563eb;">
+                            <span id="adm-stretch-label" class="small fw-bold text-primary" style="min-width:34px;">1.0x</span>
+                        </div>
+
+                        <div class="d-flex align-items-center gap-1">
+                            <label for="adm-font-size" class="small text-secondary fw-semibold mb-0">字體(px)：</label>
+                            <input
+                                type="number"
+                                id="adm-font-size"
+                                class="form-control form-control-sm"
+                                min="8"
+                                max="64"
+                                step="1"
+                                placeholder="自動"
+                                title="直接輸入字體大小 (8~64)，留空為自動"
+                                style="width:68px;border-radius:7px;font-size:0.8rem;font-weight:700;text-align:center;"
+                            >
+                            <button type="button" id="adm-font-auto-btn" class="btn btn-sm sc-btn-outline-clean sc-btn-sm py-0 px-2" title="恢復系統自動計算字體大小">自動</button>
+                        </div>
+
+                        <div class="d-flex align-items-center gap-1">
+                            <label for="adm-grid-step" class="small text-secondary fw-semibold mb-0">天數虛線：</label>
+                            <select id="adm-grid-step" class="form-select form-select-sm" style="width:auto;border-radius:7px;font-size:0.78rem;font-weight:600;">
+                                <option value="auto" selected>自動</option>
+                                <option value="1">每天</option>
+                                <option value="5">每 5 天</option>
+                                <option value="7">每 7 天</option>
+                                <option value="10">每 10 天</option>
+                                <option value="15">每 15 天</option>
+                                <option value="30">每 30 天</option>
+                            </select>
+                        </div>
+
+                        <label class="sc-toggle-wrap mb-0" for="adm-critical-only">
+                            <input type="checkbox" id="adm-critical-only" class="sc-toggle-input">
+                            <span class="sc-toggle-track"></span>
+                            <span class="sc-toggle-label">僅高亮要徑</span>
+                        </label>
+                    </div>
+                    <button type="button" id="adm-download-btn" class="btn btn-sm sc-btn-outline-clean sc-btn-sm" title="以目前排程與顯示設定下載高畫質 PNG">
+                        <span class="material-icons" style="font-size:16px;">download</span>
+                        <span>下載 ADM PNG</span>
+                    </button>
+                </div>
+                <div class="sc-adm-stage" id="adm-stage">
+                    <div id="adm-canvas-mount" style="width:100%;height:100%;"></div>
+                    <div id="adm-tooltip" class="sc-adm-tooltip" style="display:none;"></div>
+                    <div class="sc-adm-zoom-bar">
+                        <button type="button" class="sc-zoom-btn" id="adm-zoom-out" title="縮小"><span class="material-icons">remove</span></button>
+                        <button type="button" class="sc-zoom-pct" id="adm-zoom-reset" title="100%">100%</button>
+                        <button type="button" class="sc-zoom-btn" id="adm-zoom-in" title="放大"><span class="material-icons">add</span></button>
+                        <span class="sc-zoom-sep"></span>
+                        <button type="button" class="sc-zoom-btn" id="adm-zoom-fit" title="適應全圖"><span class="material-icons">fit_screen</span></button>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
 
             <!-- Live-Linked S-Curve Dock Panel -->
             <div id="gantt-scurve-dock" class="sc-gantt-scurve-dock" style="flex: 0 0 auto;">
@@ -263,6 +370,7 @@
             </div>
         </div>
     </div>
+    {% endif %}
     {% endif %}
 </body>
 </html>

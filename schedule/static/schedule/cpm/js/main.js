@@ -1772,36 +1772,21 @@ const cpmApp = new Vue({
         },
         export_image(){
             const vm = this;
-            if (vm.getBrowserZoomRatio() !== 1) {
-                Lobibox.confirm({
-                    title: '顯示比例提醒',
-                    msg: '請按下 <strong>Ctrl + 0</strong> 或 <strong>開啟瀏覽器顯示比例設定</strong>，來恢復瀏覽器顯示為 100%，以確保匯出圖片比例正確。',
-                    buttons: {
-                        accept: {
-                            'class': 'lobibox-btn lobibox-btn-yes',
-                            text: '確定',
-                            closeOnClick: true
-                        }
-                    }
-                });
-                return;
-            } else {
-                vm.end_text_edit();
+            vm.end_text_edit();
 
-                const img = this.diagram.makeImage({
-                    scale: 1,
-                    maxSize: new go.Size(20000, 20000),
-                    background: "white",
-                    type: "image/jpeg"
-                });
+            const img = this.diagram.makeImage({
+                scale: 1,
+                maxSize: new go.Size(20000, 20000),
+                background: "white",
+                type: "image/jpeg"
+            });
 
-                let a = document.createElement('a');
-                a.href = img.src;
-                a.download = "cpm.jpg";
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-            }
+            let a = document.createElement('a');
+            a.href = img.src;
+            a.download = "cpm.jpg";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
         },
         reload_page_alert(e){
             e.preventDefault();
@@ -1927,51 +1912,36 @@ const cpmApp = new Vue({
                 // let no_start_end_link_data = vm.origin_link_data_array.filter(link => link.to !== 'end' && link.from !== 'start');
                 // console.log(save_result_resp);
                 if(save_result_resp === true){
-                    if (vm.getBrowserZoomRatio() !== 1) {
-                        Lobibox.confirm({
-                            title: '顯示比例提醒',
-                            msg: '請按下 <strong>Ctrl + 0</strong> 或 <strong>開啟瀏覽器顯示比例設定</strong>，來恢復瀏覽器顯示為 100%，以確保匯出圖片比例正確。',
-                            buttons: {
-                                accept: {
-                                    'class': 'lobibox-btn lobibox-btn-yes',
-                                    text: '確定',
-                                    closeOnClick: true
-                                }
-                            }
-                        });
-                        return;
-                    } else {
-                        const img = vm.diagram.makeImage({
-                            scale: 1,
-                            maxSize: new go.Size(20000, 20000),
-                            background: "white",
-                            type: "image/jpeg"
-                        });
-        
-                        const img_data_url = img.src.split('base64,')[1];
+                    const img = vm.diagram.makeImage({
+                        scale: 1,
+                        maxSize: new go.Size(20000, 20000),
+                        background: "white",
+                        type: "image/jpeg"
+                    });
 
-                        const post_data = {
-                            version_id: vm.schedule_version_id,
-                            file: img_data_url,
-                        };
-            
-                        const copy_main_items_to_cpmitems_resp = await axios.post('/schedule/api/active/version_schedule/release/', post_data, {
-                            headers: {
-                                'X-CSRFToken': vm.csrftoken
-                            }
-                        });
+                    const img_data_url = img.src.split('base64,')[1];
 
-                        // get origin_link_data
-                        vm.is_cpm_release = true;
-                        vm.update_data_modal.hide();
+                    const post_data = {
+                        version_id: vm.schedule_version_id,
+                        file: img_data_url,
+                    };
 
-                        LOADER.close();
-                        Lobibox.notify("success", {
-                            title: '系統訊息',
-                            msg: '圖片更新成功',
-                            sound: false
-                        });
-                    }
+                    const copy_main_items_to_cpmitems_resp = await axios.post('/schedule/api/active/version_schedule/release/', post_data, {
+                        headers: {
+                            'X-CSRFToken': vm.csrftoken
+                        }
+                    });
+
+                    // get origin_link_data
+                    vm.is_cpm_release = true;
+                    vm.update_data_modal.hide();
+
+                    LOADER.close();
+                    Lobibox.notify("success", {
+                        title: '系統訊息',
+                        msg: '計算並發佈成功！',
+                        sound: false
+                    });
                 }else{
                     Lobibox.notify("error", {
                         title: '系統訊息',
@@ -2053,7 +2023,7 @@ const cpmApp = new Vue({
                                 msg: '已調整完畢',
                             });
 
-                            window.location.reload();
+                            vm.reload_preserve_mode();
                         }
                         catch(err){
                             Lobibox.notify('error', {
@@ -2082,6 +2052,14 @@ const cpmApp = new Vue({
 
                 resolve(vm.diagram.layout);
             });
+        },
+        reload_preserve_mode(){
+            const vm = this;
+            const url = new URL(window.location.href);
+            if(vm.is_graph_edit){
+                url.searchParams.delete('readonly');
+            }
+            window.location.href = url.toString();
         },
         apply_edit_mode(editable){
             const vm = this;
@@ -2282,7 +2260,7 @@ const cpmApp = new Vue({
                                 title: '系統訊息',
                                 msg: '匯入成功，等待頁面重新整理',
                             });
-                            window.location.reload();
+                            vm.reload_preserve_mode();
                         }
                     }
                 }
@@ -2323,15 +2301,9 @@ const cpmApp = new Vue({
             return p;
         },
         fix_float_num(num){
-            const vm = this;
             let f_number = parseFloat(num);
-
-            if(vm.precision(f_number) >= 10){
-                return parseFloat(f_number.toFixed(10));
-            }else{
-                return f_number;
-            }
-             ;
+            if(isNaN(f_number)) return 0;
+            return parseFloat(f_number.toFixed(4));
         },
     }
 });

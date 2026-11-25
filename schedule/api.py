@@ -84,6 +84,7 @@ def serialize_version_schedule(obj):
         'start_end_node': obj.start_end_node or '{}',
         'release_json': obj.release_json or '{}',
         'cpm_release': obj.cpm_release,
+        'cpm_locked': bool(obj.cpm_locked),
         'schedule_setting_type': obj.schedule_setting_type,
         'schedule_setting_type__name': setting_name,
     }
@@ -311,6 +312,57 @@ def version_schedule_release(request):
     version.save()
 
     return JsonResponse({'status': True})
+
+
+@csrf_exempt
+def version_schedule_toggle_cpm_lock(request, pk):
+    """鎖定或解除鎖定 CPM 網圖（/schedule/api/active/version_schedule/<pk>/toggle_cpm_lock/）"""
+    if request.method != 'POST':
+        return HttpResponse(status=405)
+
+    version = Version_Schedule.objects.filter(id=pk).first()
+    if not version:
+        return JsonResponse({'status': False, 'msg': '找不到此預定進度版本'}, status=404)
+
+    data = _parse_json_body(request)
+    action = str(data.get('action') or '').strip().lower()
+    if action not in ('lock', 'unlock'):
+        return JsonResponse({'status': False, 'msg': '無效的操作類型'}, status=400)
+
+    if action == 'lock':
+        checklist = version.get_cpm_lock_checklist()
+        if not checklist['can_lock']:
+            return JsonResponse(
+                {
+                    'status': False,
+                    'msg': '尚未符合 CPM 鎖定條件，請先完成所有前置項目。',
+                    'checklist': checklist,
+                },
+                status=400,
+            )
+        version.cpm_locked = True
+        version.update_time = NOW()
+        if request.user.is_authenticated:
+            version.update_user = request.user
+        version.save(update_fields=['cpm_locked', 'update_time', 'update_user'])
+        _sync_cpm_links_to_items(version)
+        return JsonResponse({
+            'status': True,
+            'cpm_locked': True,
+            'checklist': version.get_cpm_lock_checklist(),
+        })
+
+    # unlock
+    version.cpm_locked = False
+    version.update_time = NOW()
+    if request.user.is_authenticated:
+        version.update_user = request.user
+    version.save(update_fields=['cpm_locked', 'update_time', 'update_user'])
+    return JsonResponse({
+        'status': True,
+        'cpm_locked': False,
+        'checklist': version.get_cpm_lock_checklist(),
+    })
 
 
 def _update_single_schedule_item(item, data, user=None):

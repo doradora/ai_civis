@@ -365,6 +365,9 @@ function initial_gantt() {
 
             renderCpmFloatLayer();
             scheduleLiveSCurveUpdate();
+            if (typeof syncAdmFromGantt === 'function') {
+                syncAdmFromGantt(false);
+            }
 
             if (changed) {
                 $('#div_update_dutton').show();
@@ -660,6 +663,140 @@ function initial_gantt() {
     });
 
     applySCurveHeightRatio(scurveRatioPct, false);
+
+    // Live-Linked ADM Arrow Diagram Subview (same level as Gantt; reads live Gantt task positions!)
+    var ganttAdmInstance = null;
+    var activeGanttSubview = 'gantt';
+
+    function collectLiveAdmNodesFromGantt() {
+        var nodes = [];
+        gantt.eachTask(function (t) {
+            if (!t || t.type === 'project' || t.type === 'milestone') return;
+            var curEs = date_to_moment(t.start_date).diff(moment(start_date), 'days') + 1;
+            var curEf = date_to_moment(t.end_date).diff(moment(start_date), 'days');
+            if (curEf < curEs) curEf = curEs;
+            var minEs = parseInt(t.cpm_min_start || curEs, 10);
+            var maxLf = parseInt(t.cpm_max_end || curEf, 10);
+            var cDur = parseInt(t.cpm_duration || (curEf - curEs + 1), 10);
+            var ls0 = Math.max(0, maxLf - cDur);
+            nodes.push({
+                id: t.id,
+                name: t.text || '未命名工項',
+                es: Math.max(0, curEs - 1),
+                ef: curEf,
+                rawEs0: Math.max(0, minEs - 1),
+                rawEf1: minEs + cDur - 1,
+                ls: ls0,
+                lf: maxLf,
+                duration: Math.max(1, curEf - curEs + 1),
+                unit_price: parseFloat(t.unit_price) || 0,
+                cp: Boolean(t.cp)
+            });
+        });
+        return nodes;
+    }
+
+    function syncAdmFromGantt(autoFit) {
+        if (!cpmConstrained || activeGanttSubview !== 'adm') return;
+        var nodes = collectLiveAdmNodesFromGantt();
+        var links = (typeof cpm_links_data !== 'undefined' && Array.isArray(cpm_links_data)) ? cpm_links_data : [];
+
+        if (!ganttAdmInstance && typeof window.AdmCanvas === 'function') {
+            var maxDayForRec = Math.max(1, parseInt(total_duration || 1, 10));
+            nodes.forEach(function (n) {
+                if (n.ef > maxDayForRec) maxDayForRec = n.ef;
+            });
+            var recStep = (typeof window.AdmCanvas.recommendGridStep === 'function')
+                ? window.AdmCanvas.recommendGridStep(maxDayForRec)
+                : 5;
+            var $stepSel = $('#adm-grid-step');
+            $stepSel.find('option').each(function () {
+                var baseTxt = $(this).text().replace('（建議）', '');
+                if ($(this).val() === String(recStep)) {
+                    $(this).text(baseTxt + '（建議）');
+                } else {
+                    $(this).text(baseTxt);
+                }
+            });
+            $stepSel.val(String(recStep));
+
+            ganttAdmInstance = new window.AdmCanvas({
+                container: document.getElementById('adm-canvas-mount'),
+                tooltipEl: document.getElementById('adm-tooltip'),
+                zoomLabelEl: document.getElementById('adm-zoom-reset'),
+                nodes: nodes,
+                links: links,
+                valueType: 'esef',
+                stretch: parseFloat($('#adm-stretch-range').val()) || 1.0,
+                fontSize: ($('#adm-font-size').val() && !isNaN(parseFloat($('#adm-font-size').val()))) ? parseFloat($('#adm-font-size').val()) : 'auto',
+                gridStep: String(recStep),
+                projectTitle: (typeof project_display_name !== 'undefined') ? project_display_name : ''
+            });
+            $('#adm-zoom-in').off('click').on('click', function () { ganttAdmInstance.zoomIn(); });
+            $('#adm-zoom-out').off('click').on('click', function () { ganttAdmInstance.zoomOut(); });
+            $('#adm-zoom-reset').off('click').on('click', function () { ganttAdmInstance.zoomReset(); });
+            $('#adm-zoom-fit').off('click').on('click', function () { ganttAdmInstance.fitToView(); });
+            $('#adm-stretch-range').off('input').on('input', function () {
+                var v = parseFloat(this.value) || 1.2;
+                $('#adm-stretch-label').text(v.toFixed(1) + 'x');
+                ganttAdmInstance.setStretch(v);
+            });
+            $('#adm-font-size').off('input change').on('input change', function () {
+                var raw = String(this.value || '').trim();
+                if (!raw) {
+                    ganttAdmInstance.setFontSize('auto');
+                } else {
+                    var num = parseFloat(raw);
+                    if (!isNaN(num) && num >= 8 && num <= 64) {
+                        ganttAdmInstance.setFontSize(num);
+                    }
+                }
+            });
+            $('#adm-font-auto-btn').off('click').on('click', function () {
+                $('#adm-font-size').val('');
+                ganttAdmInstance.setFontSize('auto');
+            });
+            $('#adm-grid-step').off('change').on('change', function () {
+                ganttAdmInstance.setGridStep(this.value);
+            });
+            $('#adm-critical-only').off('change').on('change', function () {
+                ganttAdmInstance.setCriticalOnly(this.checked);
+            });
+            $('#adm-download-btn').off('click').on('click', function () {
+                var baseName = ((typeof project_display_name !== 'undefined' && project_display_name) ? project_display_name : '預定進度') + '_ADM箭線圖.png';
+                ganttAdmInstance.exportPng(baseName);
+            });
+        } else if (ganttAdmInstance) {
+            ganttAdmInstance.setData(nodes, links, autoFit);
+        }
+    }
+
+    function switchGanttSubview(mode) {
+        activeGanttSubview = mode;
+        $('#gantt-adm-switcher .sc-mini-seg-btn').removeClass('active');
+        $('#gantt-adm-switcher .sc-mini-seg-btn[data-subview="' + mode + '"]').addClass('active');
+
+        if (mode === 'adm') {
+            $('#gantt_here').hide();
+            $('#gantt-scale-wrap').hide();
+            $('#gantt-scurve-dock').hide();
+            $('#gantt-adm-panel').show();
+            resize_window();
+            syncAdmFromGantt(true);
+        } else {
+            $('#gantt-adm-panel').hide();
+            $('#gantt_here').show();
+            $('#gantt-scale-wrap').show();
+            $('#gantt-scurve-dock').show();
+            resize_window();
+            gantt.setSizes();
+            renderCpmFloatLayer();
+            scheduleLiveSCurveUpdate();
+        }
+    }
+
+    $('#btn-subview-gantt').off('click').on('click', function () { switchGanttSubview('gantt'); });
+    $('#btn-subview-adm').off('click').on('click', function () { switchGanttSubview('adm'); });
 
     gantt.attachEvent("onAfterTaskUpdate", scheduleLiveSCurveUpdate);
     gantt.attachEvent("onAfterTaskAdd", scheduleLiveSCurveUpdate);
@@ -1057,10 +1194,12 @@ function change_scale() {
 function resize_window() {
     var height = $(window).height();
     var head_height = parseInt($('.header').css('height').replace('px', '')) || 0;
-    var dock_height = $('#gantt-scurve-dock').outerHeight() || 0;
+    var dock_visible = $('#gantt-scurve-dock').is(':visible');
+    var dock_height = dock_visible ? ($('#gantt-scurve-dock').outerHeight() || 0) : 0;
     var notice_height = $('.sc-gantt-notice').outerHeight() || 0;
     var avail = Math.max(220, height - head_height - dock_height - notice_height - 4);
     $('#gantt_here').css('height', avail + 'px');
+    $('#gantt-adm-panel').css('height', avail + 'px');
 }
 
 function update_progress() {

@@ -29,6 +29,7 @@ from django.db.models import F
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse, StreamingHttpResponse
 from django.shortcuts import render
 from django.template.loader import render_to_string
+from django.views.decorators.cache import never_cache
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.csrf import csrf_exempt
 from matplotlib import font_manager
@@ -134,6 +135,8 @@ def item_profile(R, version_id):
     except Exception:
         parsed_links = []
 
+    cpm_lock_checklist = version.get_cpm_lock_checklist() if version.schedule_setting_type == 1 else None
+
     if version.schedule_setting_type == 1:
         t = join('schedule', 'item_cpm.html')
     else:
@@ -154,10 +157,13 @@ def item_profile(R, version_id):
             'weight_is_valid': weight_is_valid,
             'cpm_nodes_json': json.dumps(cpm_nodes, ensure_ascii=False),
             'cpm_links_json': json.dumps(parsed_links, ensure_ascii=False),
+            'cpm_lock_checklist': cpm_lock_checklist,
+            'cpm_lock_checklist_json': json.dumps(cpm_lock_checklist or {}, ensure_ascii=False),
         },
     )
 
 
+@never_cache
 @xframe_options_sameorigin
 def cpm_diagram(R):
     get_dir_kind()
@@ -175,14 +181,16 @@ def cpm_diagram(R):
     root_item = version.scheduleitem_set.filter(uplevel=None).order_by('id').first()
     version.mapping_items_count = 0
 
+    is_readonly = (R.GET.get('readonly') == '1') or bool(version.cpm_locked)
+
     return render(
         R,
         join('schedule', 'cpm_diagram.html'),
         {
             'total_days': version.duration,
             'project': project,
-            'edit': R.GET.get('readonly') != '1',
-            'readonly': R.GET.get('readonly') == '1',
+            'edit': not is_readonly,
+            'readonly': is_readonly,
             'embed': R.GET.get('embed') == '1',
             'version': version,
             'root_item': root_item,
@@ -192,6 +200,7 @@ def cpm_diagram(R):
     )
 
 
+@never_cache
 @xframe_options_sameorigin
 def gantt_diagram(R):
     get_dir_kind()
@@ -203,6 +212,26 @@ def gantt_diagram(R):
     version = Version_Schedule.objects.filter(id=version_id).first()
     if not version:
         return HttpResponseRedirect('/schedule/manage_schedule/')
+
+    if version.schedule_setting_type == 1 and not version.cpm_locked:
+        return render(
+            R,
+            join('schedule', 'gantt_diagram.html'),
+            {
+                'project': version.project,
+                'edit': False,
+                'embed': R.GET.get('embed') == '1',
+                'cpm_not_locked': True,
+                'cpm_lock_checklist': version.get_cpm_lock_checklist(),
+                'version': version,
+                'start_date': datetime.date.today(),
+                'pre_start_date': datetime.date.today(),
+                'end_date': datetime.date.today(),
+                'root_item': None,
+                'items': [],
+                'item_links': '[]',
+            },
+        )
 
     version.create_root_item()
     root_item = version.scheduleitem_set.filter(uplevel=None).order_by('id').first()
@@ -261,6 +290,7 @@ def gantt_diagram(R):
             'root_item': root_item,
             'items': items[1:],
             'item_links': json.dumps(item_links),
+            'cpm_links_json': version.cpm_link or '[]',
         },
     )
 
@@ -1234,6 +1264,7 @@ def configure_fonts():
     plt.rcParams['axes.unicode_minus'] = False
 
 
+@never_cache
 def make_adm_png(R, version_id, return_response=True):
     """匯出 ADM 箭線圖 PNG（完全保留 jsrcm 繪圖邏輯與標楷體字型）"""
     version = Version_Schedule.objects.get(id=version_id)
@@ -1461,5 +1492,6 @@ def make_adm_png(R, version_id, return_response=True):
 
     response = HttpResponse(buf.getvalue(), content_type='image/png')
     response['Content-Length'] = buf.getbuffer().nbytes
-    response['Content-Disposition'] = _content_disposition_attachment(f'預定進度精靈_{version.id}_ADM.png')
+    is_inline = R.GET.get('inline') == '1'
+    response['Content-Disposition'] = _content_disposition_attachment(f'預定進度精靈_{version.id}_ADM.png', inline=is_inline)
     return response

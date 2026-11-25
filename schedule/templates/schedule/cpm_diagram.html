@@ -168,7 +168,7 @@
                     <div v-cloak v-if="!is_embed || is_graph_edit" id="info-bar" class="sc-float-pill">
                         <small>
                             總比率:
-                            <strong v-cloak :class="fix_float_num(total_unit_price) > 100 ? 'text-danger' : total_unit_price == 100 ? 'text-success' : 'text-primary'">
+                            <strong v-cloak :class="fix_float_num(total_unit_price) > 100 ? 'text-danger' : fix_float_num(total_unit_price) == 100 ? 'text-success' : 'text-primary'">
                                 [[ fix_float_num(total_unit_price) ]]%
                             </strong>
                             <span class="mx-2 text-muted">|</span>

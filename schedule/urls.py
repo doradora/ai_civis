@@ -10,6 +10,7 @@ urlpatterns = [
 
     # Tastypie 相容 REST API（/schedule/api/active/...）
     re_path(r'^api/active/version_schedule/release/?$', api.version_schedule_release, name='api_release'),
+    re_path(r'^api/active/version_schedule/(?P<pk>[0-9]+)/toggle_cpm_lock/?$', api.version_schedule_toggle_cpm_lock, name='api_toggle_cpm_lock'),
     re_path(r'^api/active/version_schedule/?$', api.version_schedule_list, name='api_version_schedule_list'),
     re_path(r'^api/active/version_schedule/(?P<pk>[0-9]+)/?$', api.version_schedule_detail, name='api_version_schedule_detail'),
 

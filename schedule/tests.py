@@ -258,3 +258,59 @@ class FullJsrcmScheduleTests(TestCase):
         vg_resp = self.client.get(f'/schedule/item_profile/{v_gantt.id}/')
         self.assertEqual(vg_resp.status_code, 200)
         self.assertIn('class="sc-topbar ', vg_resp.content.decode('utf-8'))
+
+    def test_cpm_lock_workflow_and_gantt_guard(self):
+        # 1. Before CPM calculation & lock, locking must fail (400) and Gantt must show locked gate
+        fail_lock = self.client.post(
+            f'/schedule/api/active/version_schedule/{self.v_cpm.id}/toggle_cpm_lock/',
+            data=json.dumps({'action': 'lock'}),
+            content_type='application/json',
+        )
+        self.assertEqual(fail_lock.status_code, 400)
+        self.assertFalse(fail_lock.json()['status'])
+
+        g_locked = self.client.get(f'/schedule/gantt_diagram/?version_id={self.v_cpm.id}&embed=1')
+        self.assertEqual(g_locked.status_code, 200)
+        self.assertIn('尚未完成並鎖定 CPM 網圖，無法使用甘特圖', g_locked.content.decode('utf-8'))
+
+        # 2. Complete CPM links & release (weight is already 30+50+20 = 100%)
+        links = [
+            {'from': 'start', 'to': self.t1.id, 'mode': 'FS', 'lag': 0},
+            {'from': self.t1.id, 'to': self.t2.id, 'mode': 'FS', 'lag': 0},
+            {'from': self.t1.id, 'to': self.t3.id, 'mode': 'FS', 'lag': 0},
+            {'from': self.t2.id, 'to': 'end', 'mode': 'FS', 'lag': 0},
+            {'from': self.t3.id, 'to': 'end', 'mode': 'FS', 'lag': 0},
+        ]
+        self.v_cpm.cpm_link = json.dumps(links)
+        self.v_cpm.cpm_release = True
+        self.v_cpm.save()
+
+        ok_lock = self.client.post(
+            f'/schedule/api/active/version_schedule/{self.v_cpm.id}/toggle_cpm_lock/',
+            data=json.dumps({'action': 'lock'}),
+            content_type='application/json',
+        )
+        self.assertEqual(ok_lock.status_code, 200)
+        self.assertTrue(ok_lock.json()['cpm_locked'])
+
+        # 3. After locking: Gantt opens normally, CPM diagram forces readonly, item_cpm shows unlock button
+        g_open = self.client.get(f'/schedule/gantt_diagram/?version_id={self.v_cpm.id}&embed=1')
+        self.assertEqual(g_open.status_code, 200)
+        self.assertIn('id="gantt_here"', g_open.content.decode('utf-8'))
+
+        cpm_ro = self.client.get(f'/schedule/cpm_diagram/?version_id={self.v_cpm.id}&embed=1')
+        self.assertIn('const INITIAL_READONLY = true;', cpm_ro.content.decode('utf-8'))
+
+        prof_locked = self.client.get(f'/schedule/item_profile/{self.v_cpm.id}/')
+        self.assertIn('id="btn-unlock-cpm"', prof_locked.content.decode('utf-8'))
+
+        # 4. Unlocking re-locks Gantt
+        ok_unlock = self.client.post(
+            f'/schedule/api/active/version_schedule/{self.v_cpm.id}/toggle_cpm_lock/',
+            data=json.dumps({'action': 'unlock'}),
+            content_type='application/json',
+        )
+        self.assertEqual(ok_unlock.status_code, 200)
+        self.assertFalse(ok_unlock.json()['cpm_locked'])
+        g_relocked = self.client.get(f'/schedule/gantt_diagram/?version_id={self.v_cpm.id}&embed=1')
+        self.assertIn('尚未完成並鎖定 CPM 網圖，無法使用甘特圖', g_relocked.content.decode('utf-8'))

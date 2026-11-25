@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ case.name }} - 抽查驗紀錄{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <div>
+        <a href="{% url 'audit:case_list' %}" class="text-decoration-none small">&larr; 返回抽查紀錄列表</a>
+        <h4 class="fw-bold mb-0">
+            {{ case.name }}
+            <span class="badge {% if case.check_type == 'spot_check' %}bg-primary{% else %}bg-success{% endif %} fs-6">{{ case.get_check_type_display }}</span>
+            {% if case.is_passed %}
+                <span class="badge bg-success fs-6">合格</span>
+            {% else %}
+                <span class="badge bg-danger fs-6">不合格 ({{ case.fail_count }} 項缺失)</span>
+            {% endif %}
+        </h4>
+        <small class="text-muted">工程案：{{ case.project.name }}</small>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'audit:case_export_excel' case.id %}" class="btn btn-outline-primary btn-sm">匯出抽查紀錄 Excel</a>
+        <a href="{% url 'audit:case_export_improve_docx' case.id %}" class="btn btn-outline-danger btn-sm">匯出缺失改善表 Word</a>
+    </div>
+</div>
+
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-check" type="button">1. 查驗項目填寫</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-faults" type="button">2. 缺失改善追蹤 ({{ faults|length }})</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-photos" type="button">3. 現場與改善相片 ({{ photos|length }})</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-sign" type="button">4. 電子簽名</button></li>
+</ul>
+
+<div class="tab-content">
+    <!-- TAB 1: Main Inspection Form -->
+    <div class="tab-pane fade show active" id="tab-check">
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_case">
+
+            <div class="card p-3 mb-3">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label small mb-1">表單名稱</label>
+                        <input type="text" name="name" value="{{ case.name }}" class="form-control form-control-sm" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small mb-1">分項工程名稱</label>
+                        <input type="text" name="work_item_name" value="{{ case.work_item_name }}" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">查驗日期</label>
+                        <input type="date" name="check_date" value="{{ case.check_date|date:'Y-m-d' }}" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small mb-1">申請日期</label>
+                        <input type="date" name="apply_date" value="{{ case.apply_date|date:'Y-m-d'|default:'' }}" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">檢查位置</label>
+                        <input type="text" name="location" value="{{ case.location }}" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">抽查 / 檢查人員</label>
+                        <input type="text" name="inspector" value="{{ case.inspector }}" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">協力廠商</label>
+                        <input type="text" name="contractor" value="{{ case.contractor }}" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small mb-1">檢查時機</label>
+                        <select name="check_timing" class="form-select form-select-sm">
+                            <option value="1" {% if case.check_timing == 1 %}selected{% endif %}>檢驗停留點</option>
+                            <option value="2" {% if case.check_timing == 2 %}selected{% endif %}>不定期抽查</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small mb-1 d-block">本次勾選檢查階段</label>
+                        {% for st in stages %}
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" name="selected_stages" value="{{ st.name }}" id="st_{{ st.id }}"
+                                       {% if st.name in selected_stage_list %}checked{% endif %}>
+                                <label class="form-check-label small" for="st_{{ st.id }}">{{ st.name }}</label>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="card p-3 mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="fw-bold mb-0">查驗細項清單（標記為「不合格」儲存後，將自動建立缺失追蹤項目）</h6>
+                    <button type="submit" class="btn btn-primary btn-sm">儲存所有查驗結果</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm align-middle mb-0">
+                        <thead class="table-light text-center">
+                            <tr>
+                                <th style="width:110px">檢查階段</th>
+                                <th style="width:24%">查驗細項</th>
+                                <th style="width:24%">檢驗標準</th>
+                                <th>實際檢查情形 / 量測數據</th>
+                                <th style="width:210px">查驗結果</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for stage in stages %}
+                            {% for d in stage.details.all %}
+                                <tr class="{% if d.result == 2 %}table-danger{% elif d.result == 1 %}table-success{% endif %}">
+                                    {% if forloop.first %}
+                                        <td rowspan="{{ stage.details.all|length }}" class="text-center fw-bold bg-light">{{ stage.name }}</td>
+                                    {% endif %}
+                                    <td>{{ forloop.counter }}. {{ d.name }}</td>
+                                    <td class="small text-secondary">{{ d.standard }}</td>
+                                    <td>
+                                        <input type="text" name="note_{{ d.id }}" value="{{ d.actual_note }}" class="form-control form-control-sm" placeholder="填寫實際量測數據或情形...">
+                                    </td>
+                                    <td class="text-center text-nowrap">
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <input type="radio" class="btn-check" name="result_{{ d.id }}" id="r1_{{ d.id }}" value="1" {% if d.result == 1 %}checked{% endif %}>
+                                            <label class="btn btn-outline-success" for="r1_{{ d.id }}">合格</label>
+
+                                            <input type="radio" class="btn-check" name="result_{{ d.id }}" id="r2_{{ d.id }}" value="2" {% if d.result == 2 %}checked{% endif %}>
+                                            <label class="btn btn-outline-danger" for="r2_{{ d.id }}">不合格</label>
+
+                                            <input type="radio" class="btn-check" name="result_{{ d.id }}" id="r3_{{ d.id }}" value="3" {% if d.result == 3 %}checked{% endif %}>
+                                            <label class="btn btn-outline-secondary" for="r3_{{ d.id }}">免檢</label>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-3">
+                    <label class="form-label small mb-1">綜合備註</label>
+                    <textarea name="memo" rows="2" class="form-control form-control-sm">{{ case.memo }}</textarea>
+                </div>
+                <div class="text-end mt-3">
+                    <button type="submit" class="btn btn-primary">儲存抽查驗紀錄</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- TAB 2: Faults -->
+    <div class="tab-pane fade" id="tab-faults">
+        {% for f in faults %}
+        <div class="card p-3 mb-3 border-start border-4 {% if f.is_verified %}border-success{% else %}border-danger{% endif %}">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="fw-bold mb-0">[{{ f.detail.stage.name }}] {{ f.detail.name }}</h6>
+                {% if f.is_verified %}
+                    <span class="badge bg-success">複查確認合格</span>
+                {% elif f.is_improved %}
+                    <span class="badge bg-warning text-dark">廠商已改善（待複查）</span>
+                {% else %}
+                    <span class="badge bg-danger">缺失改善中</span>
+                {% endif %}
+            </div>
+            <form method="post" action="{% url 'audit:fault_list' %}">
+                {% csrf_token %}
+                <input type="hidden" name="fault_id" value="{{ f.id }}">
+                <input type="hidden" name="next" value="{% url 'audit:case_edit' case.id %}">
+                <div class="row g-2 mb-2">
+                    <div class="col-md-4">
+                        <label class="form-label small mb-1">缺失說明</label>
+                        <textarea name="fault_note" rows="2" class="form-control form-control-sm">{{ f.fault_note }}</textarea>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small mb-1">改善對策</label>
+                        <textarea name="improve_plan" rows="2" class="form-control form-control-sm">{{ f.improve_plan }}</textarea>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small mb-1">改善結果說明</label>
+                        <textarea name="improve_note" rows="2" class="form-control form-control-sm">{{ f.improve_note }}</textarea>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-4">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="is_improved" id="imp_{{ f.id }}" {% if f.is_improved %}checked{% endif %}>
+                        <label class="form-check-label small" for="imp_{{ f.id }}">廠商已完成改善</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="is_verified" id="ver_{{ f.id }}" {% if f.is_verified %}checked{% endif %}>
+                        <label class="form-check-label small" for="ver_{{ f.id }}">監造複查確認合格</label>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-primary ms-auto">更新缺失改善</button>
+                </div>
+            </form>
+        </div>
+        {% empty %}
+        <div class="card p-4 text-center text-muted">本紀錄目前無不合格缺失項目。若要測試缺失追蹤，請在「查驗項目填寫」將任一細項選為「不合格」並儲存。</div>
+        {% endfor %}
+    </div>
+
+    <!-- TAB 3: Photos -->
+    <div class="tab-pane fade" id="tab-photos">
+        <div class="card p-3 mb-3">
+            <h6 class="fw-bold mb-2">上傳查驗 / 缺失 / 改善相片</h6>
+            <form method="post" enctype="multipart/form-data" class="row g-2 align-items-end">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="upload_photo">
+                <div class="col-md-3">
+                    <label class="form-label small mb-1">照片類型</label>
+                    <select name="photo_type" class="form-select form-select-sm">
+                        <option value="general">一般檢驗照片</option>
+                        <option value="fault">缺失照片（改善前）</option>
+                        <option value="improve">改善照片（改善後）</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small mb-1">關聯缺失（選填）</label>
+                    <select name="fault_id" class="form-select form-select-sm">
+                        <option value="">-- 無 --</option>
+                        {% for f in faults %}
+                            <option value="{{ f.id }}">#{{ f.id }} {{ f.detail.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small mb-1">說明文字</label>
+                    <input type="text" name="caption" class="form-control form-control-sm" placeholder="相片說明...">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small mb-1">選擇圖片</label>
+                    <div class="input-group input-group-sm">
+                        <input type="file" name="image" accept="image/*" class="form-control" required>
+                        <button type="submit" class="btn btn-success">上傳</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div class="row g-3">
+        {% for ph in photos %}
+            <div class="col-md-4 col-lg-3">
+                <div class="card p-2 h-100">
+                    <img src="{{ ph.image.url }}" class="thumb-img mb-2" alt="{{ ph.caption }}">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="badge bg-secondary">{{ ph.get_photo_type_display }}</span>
+                        <form method="post" onsubmit="return confirm('刪除照片？');">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete_photo">
+                            <input type="hidden" name="photo_id" value="{{ ph.id }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2">刪</button>
+                        </form>
+                    </div>
+                    <div class="small">{{ ph.caption|default:"（無說明）" }}</div>
+                    {% if ph.fault %}
+                        <small class="text-danger">關聯缺失：{{ ph.fault.detail.name }}</small>
+                    {% endif %}
+                </div>
+            </div>
+        {% empty %}
+            <div class="col-12"><div class="card p-4 text-center text-muted">尚未上傳任何相片。</div></div>
+        {% endfor %}
+        </div>
+    </div>
+
+    <!-- TAB 4: Signatures -->
+    <div class="tab-pane fade" id="tab-sign">
+        <div class="row g-3">
+        {% for slot in signature_slots %}
+            <div class="col-md-6">
+                <div class="card p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="fw-bold mb-0">{{ slot.role_name }}</h6>
+                        {% if slot.signature %}
+                            <span class="badge bg-success">已簽署 ({{ slot.signature.signed_at|date:"Y-m-d H:i" }})</span>
+                        {% else %}
+                            <span class="badge bg-secondary">尚未簽署</span>
+                        {% endif %}
+                    </div>
+                    {% if slot.signature %}
+                        <div class="border rounded p-2 mb-2 text-center bg-light">
+                            <img src="{{ slot.signature.image.url }}" alt="{{ slot.role_name }}" style="max-height:110px;">
+                        </div>
+                    {% endif %}
+                    <canvas class="signature-canvas mb-2" id="sigCanvas_{{ forloop.counter0 }}" data-role="{{ slot.role_name }}"></canvas>
+                    <div class="d-flex justify-content-end gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearPad({{ forloop.counter0 }})">清除重簽</button>
+                        <button type="button" class="btn btn-sm btn-primary" onclick="savePad({{ forloop.counter0 }})">儲存簽名</button>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'vendor/signature_pad/signature_pad.min.js' %}"></script>
+<script>
+const csrfToken = "{{ csrf_token }}";
+const pads = {};
+
+function initPads() {
+    document.querySelectorAll('.signature-canvas').forEach((canvas, idx) => {
+        if (pads[idx]) return;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width > 0 ? rect.width : 420;
+        canvas.height = 160;
+        pads[idx] = {
+            canvas,
+            role: canvas.dataset.role,
+            pad: new SignaturePad(canvas, {backgroundColor: 'rgb(255,255,255)'}),
+        };
+    });
+}
+
+document.querySelector('button[data-bs-target="#tab-sign"]').addEventListener('shown.bs.tab', initPads);
+
+function clearPad(idx) {
+    if (pads[idx]) pads[idx].pad.clear();
+}
+
+async function savePad(idx) {
+    const entry = pads[idx];
+    if (!entry || entry.pad.isEmpty()) {
+        alert('請先在簽名板上手寫簽名');
+        return;
+    }
+    const resp = await fetch("{% url 'audit:case_save_signature' case.id %}", {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+        body: JSON.stringify({
+            role_name: entry.role,
+            data_url: entry.pad.toDataURL('image/png'),
+        }),
+    });
+    const data = await resp.json();
+    if (data.status) {
+        location.reload();
+    } else {
+        alert(data.msg || '儲存失敗');
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}預定進度設定精靈 - AI Civis{% endblock %}
+
+{% block extra_css %}
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<link rel="stylesheet" type="text/css" href="{% static 'schedule/plugin/lobibox-1.2.4/css/lobibox.css' %}"/>
+<link rel="stylesheet" href="{% static 'schedule/css/manage_schedule.css' %}">
+<link rel="stylesheet" href="{% static 'schedule/css/schedule_modern.css' %}">
+<script src="{% static 'schedule/plugin/jquery/jquery-3.6.0.min.js' %}"></script>
+<script type="text/javascript" src="{% static 'schedule/js/jquery.tmpl.min.js' %}"></script>
+<script type="text/javascript" src="{% static 'schedule/plugin/jquery/jquery.twbsPagination.min.js' %}"></script>
+<script type="text/javascript" src="{% static 'schedule/plugin/lobibox-1.2.4/js/lobibox.js' %}"></script>
+{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<script type="text/javascript">
+    var CSRFMIDDLEWARETOKEN = $('input[name=csrfmiddlewaretoken]').val();
+    var STATIC_PATH = '{% static "" %}';
+</script>
+
+<div id="ajax_loading_screen" class="sc-loading-overlay">
+    <div class="sc-loading-card">
+        <div class="spinner-border text-primary" role="status"></div>
+        <div class="fw-semibold text-secondary small">資料載入中...</div>
+    </div>
+</div>
+
+<div class="container-xl px-0">
+    <!-- Hero Header -->
+    <div class="sc-hero">
+        <div>
+            <h3>
+                <span class="material-icons" style="font-size:28px;color:#38bdf8;">timeline</span>
+                預定進度設定精靈
+            </h3>
+            <p>完整支援 CPM 要徑網圖、階層式甘特圖與簡易區間三種工程進度排程、S 曲線與 Excel / ADM 匯出</p>
+        </div>
+        <div>
+            <button class="btn sc-btn sc-btn-primary px-3 py-2" type="button" data-bs-toggle="modal" data-bs-target="#create_version_dialog">
+                <span class="material-icons">add_circle_outline</span>
+                <span>新增進度草稿</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Search & Filter Bar -->
+    <div class="sc-search-panel search-form">
+        <input id="user_id" value="{{ user.id|default:'' }}" type="hidden"/>
+        <div class="row g-2 align-items-center" id="search_table_account">
+            <div class="col-md-7 col-sm-12">
+                <div class="sc-search-input-wrap">
+                    <span class="material-icons text-secondary me-2" style="font-size:20px;">search</span>
+                    <input type="text" class="form-control search-name-input" name="p__name__icontains" placeholder="搜尋工程或草稿名稱，按 Enter 快速查詢..." value=""/>
+                    <button class="btn sc-btn sc-btn-primary ms-2" id="search" page="1" value="搜尋" type="button">
+                        搜尋
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-2 col-6 text-md-end">
+                <span class="total_count text-secondary small fw-semibold"></span>
+            </div>
+            <div class="col-md-3 col-6">
+                <select class="form-select form-select-sm rounded-3" id="pageChooseSelect">
+                    <option value="10" selected>每頁顯示 10 筆資料</option>
+                    <option value="20">每頁顯示 20 筆資料</option>
+                    <option value="50">每頁顯示 50 筆資料</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="page-bar">
+        <ul class="pagination pages_list mb-0"></ul>
+    </div>
+
+    <!-- Draft Cards -->
+    <div id="div_result" class="px-0"></div>
+
+    <div class="page-bar">
+        <ul class="pagination pages_list mb-0"></ul>
+    </div>
+</div>
+
+{% verbatim %}
+<script type="text/x-jquery-tmpl" id="version_obj">
+    <div id="tr_${id}" class="search-item sc-draft-card row align-items-center mx-0" row_id="${id}" data-mode="${schedule_setting_type}">
+        <div class="col-md-11 col-10 px-1">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                <span class="badge rounded-pill bg-light text-secondary border">#${sort}</span>
+                <a title="${project_name}" class="sc-draft-title" row_id="${id}" href="/schedule/item_profile/${id}/" name="project_name">${project_name}</a>
+                {{if schedule_setting_type == 1}}
+                    <span class="sc-pill sc-pill-cpm">CPM要徑</span>
+                {{else schedule_setting_type == 2}}
+                    <span class="sc-pill sc-pill-gantt">甘特圖</span>
+                {{else}}
+                    <span class="sc-pill sc-pill-range">${schedule_setting_type__name}</span>
+                {{/if}}
+                <span class="sc-pill bg-light text-dark border">目標工期 ${duration} 天</span>
+            </div>
+            <div class="sc-draft-meta">
+                <span><i class="material-icons">event</i> 建立：${create_time}（${create_user__name}）</span>
+                <span><i class="material-icons">update</i> 更新：${update_time}（${update_user__name}）</span>
+            </div>
+        </div>
+        <div class="col-md-1 col-2 d-flex align-items-center justify-content-end gap-2 px-1">
+            <a href="/schedule/item_profile/${id}/" class="btn sc-btn sc-btn-soft d-none d-lg-inline-flex py-1 px-2" title="開啟編輯">
+                <span class="material-icons" style="font-size:18px;">open_in_new</span>
+            </a>
+            <a title="移除草稿" row_id="${id}"
+               data-bs-toggle="tooltip" data-bs-placement="top" row_name=""
+               class="delete_version sc-delete-btn pointer"
+            >
+                <span class="material-icons" style="font-size:20px;">delete_outline</span>
+            </a>
+        </div>
+    </div>
+</script>
+{% endverbatim %}
+
+<!-- 新增草稿 Modal -->
+<div class="modal fade" id="create_version_dialog" tabindex="-1" aria-labelledby="myModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2" id="myModalLabel">
+                    <span class="material-icons text-primary">add_task</span>
+                    新增預定進度草稿
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4" style="overflow-y: auto;">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">請選擇工程案</label>
+                    <select class="form-select" name="project" onchange="get_dailyreport_version()">
+                        {% for p in projects %}
+                            <option value="/project/api/v1/project/{{ p.id }}/" name="{{ p.name }}">[{{ p.year }}] {{ p.name }}{% if p.contractor %} ({{ p.contractor }}){% endif %}</option>
+                        {% endfor %}
+                        <option value="">無對應工程（自行輸入工程名稱）</option>
+                    </select>
+                    <input class="form-control mt-2" style="display:none" name="project_name" type="text" value="" placeholder="請輸入此草稿所屬工程名稱">
+                </div>
+                <div class="mb-3 d-none">
+                    <label class="form-label">請選擇對應契約版本</label>
+                    <select class="form-select" name="version">
+                        <option value="">無對應</option>
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label fw-bold">請選擇預定進度設定模式</label>
+                    <select class="form-select" name="schedule_setting_type">
+                        <option value="1" selected>CPM 要徑模式（GoJS 節點網圖、前後置關係、ADM 箭線圖）</option>
+                        <option value="2">甘特圖模式（階層目錄、右鍵管理、dhtmlxGantt 拖曳排程）</option>
+                        <option value="3">簡易區間模式（依固定天數或月份快速拆段）</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn sc-btn sc-btn-primary" id="create_version">
+                    <span class="material-icons">check</span>
+                    新增進度草稿
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="text/javascript" src="{% static 'schedule/js/manage_schedule.js' %}"></script>
+{% endblock %}

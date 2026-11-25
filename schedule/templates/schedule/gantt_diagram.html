@@ -1,0 +1,171 @@
+{% load static %}
+{% load humanize %}
+{% load schedule_tags %}
+
+<!DOCTYPE html>
+<html lang="zh-tw">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="stylesheet" href="{% static 'schedule/plugin/viewerjs/viewer.css' %}">
+    <script type="text/javascript" src="{% static 'schedule/plugin/viewerjs/viewer.min.js' %}"></script>
+
+    <link href="{% static 'schedule/bootstrap5/css/bootstrap.min.css' %}" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="{% static 'schedule/plugin/lobibox-1.2.4/css/lobibox.css' %}"/>
+    <link rel="stylesheet" type="text/css" href="{% static 'schedule/plugin/jquery/smoothness/jquery-ui-1.10.3.custom.css' %}"/>
+    <link rel="stylesheet" href="{% static 'schedule/css/base.css' %}">
+
+    <script src="{% static 'schedule/plugin/jquery/jquery-3.6.0.min.js' %}"></script>
+    <script type="text/javascript" src="{% static 'schedule/plugin/jquery/jquery-ui-1.10.3.custom.js' %}"></script>
+    <script type="text/javascript" src="{% static 'schedule/js/jquery.tmpl.min.js' %}"></script>
+    <script src="{% static 'schedule/bootstrap5/js/bootstrap.bundle.min.js' %}"></script>
+    <script type="text/javascript" src="{% static 'schedule/plugin/lobibox-1.2.4/js/lobibox.js' %}"></script>
+    <script src="{% static 'schedule/plugin/Chart.js/moment.js' %}"></script>
+    <script src="{% static 'schedule/plugin/vue/vue.min.js' %}"></script>
+    <script src="{% static 'schedule/js/base.js' %}"></script>
+
+    <script src="{% static 'schedule/plugin/dhtmlxgantt_7.1.9/codebase/dhtmlxgantt.js' %}"></script>
+    <script src="{% static 'schedule/plugin/dhtmlxgantt_7.1.9/codebase/locale/locale_cht.js' %}"></script>
+    <link rel="stylesheet" href="{% static 'schedule/plugin/dhtmlxgantt_7.1.9/codebase/dhtmlxgantt.css' %}">
+    <link rel="stylesheet" href="{% static 'schedule/css/schedule_modern.css' %}">
+
+    <style type="text/css">
+        html, body { height: 100%; margin: 0; overflow: hidden; }
+        .gantt_row_milestone .gantt_add, .gantt_row_task .gantt_add { display: none; }
+        .gantt_row_milestone div[data-column-name="unit_price"] .gantt_tree_content,
+        .gantt_row_project div[data-column-name="unit_price"] .gantt_tree_content { display: none; }
+        .gantt_scale_cell { margin-top: 8px; }
+        .change_scale {
+            border-radius: 8px !important;
+            font-weight: 600;
+            font-size: 0.8rem;
+            padding: 0.25rem 0.65rem;
+        }
+    </style>
+
+    <script type="text/javascript">
+        var DEBUG = true;
+        var CSRFMIDDLEWARETOKEN;
+        var delete_ids = [];
+        $(document).ready(function(){
+            CSRFMIDDLEWARETOKEN = $('input[name=csrfmiddlewaretoken]').val();
+        });
+    </script>
+
+    <script src="{% static 'schedule/js/gantt_diagram.js' %}"></script>
+
+    <title>甘特圖編輯 - {{ version.project_name }}</title>
+
+    <script type="text/javascript">
+        var edit = {% if edit %}true{% else %}false{% endif %};
+        var schedule_use_money_type = 'False';
+        var root_item_id = '{{ root_item.id }}';
+        var version_id = '{{ version.id }}';
+        var tasks;
+        var start_date = "{{ start_date|date:'Y-m-d' }}";
+        var pre_start_date = "{{ pre_start_date|date:'Y-m-d' }}";
+        var end_date = "{{ end_date|date:'Y-m-d' }}";
+        var total_duration = parseInt('{{ version.duration }}');
+        var item_data = [
+                {% for i in items %}
+                    {
+                        id: {{ i.id }},
+                        text: "{{ i.name|escapejs }}",
+                        start_date: "{{ i.start_date|date:'d-m-Y' }}",
+                        parent: "{{ i.uplevel.id|default:'' }}",
+                        es: "{{ i.es }}",
+                        ef: "{{ i.ef }}",
+                        duration_old: {{ i.get_delta }},
+                        duration: {{ i.get_delta }},
+                        unit_price: {{ i.unit_price }},
+                        cp: '{{ i.cp }}' == 'True',
+                        open: true,
+                        {% if i.kind.id == 10 %}
+                            type: "project",
+                        {% else %}
+                            type: "task",
+                        {% endif %}
+                    },
+                {% endfor %}
+            ];
+
+        var item_links = JSON.parse('{{ item_links|escapejs }}');
+    </script>
+</head>
+<body>
+    <div id="base-wrapper" class="d-flex flex-column h-100">
+        <!-- Modern Loading Overlay -->
+        <div id="loading" class="sc-loading-overlay">
+            <div class="sc-loading-card">
+                <div class="spinner-border text-primary" role="status"></div>
+                <div class="fw-bold text-dark">系統即時計算與儲存中，請稍候...</div>
+            </div>
+        </div>
+        {% csrf_token %}
+
+        <div class="header" style="flex: 0 0 auto;">
+            <!-- Dark Topbar -->
+            <div class="sc-gantt-topbar">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="material-icons text-info">view_timeline</span>
+                    <span class="fw-bold" style="font-size: 1.08rem;">{{ version.project_name }}</span>
+                    <span class="badge rounded-pill" style="background:rgba(255,255,255,0.12);color:#cbd5e1;font-weight:500;">
+                        建立：{{ version.create_time|date:'Y-m-d H:i' }}
+                    </span>
+                </div>
+                <div>
+                    <button class="btn btn-sm btn-outline-light rounded-pill px-3 d-inline-flex align-items-center gap-1" id="close_btn">
+                        <span class="material-icons" style="font-size:16px;">close</span>關閉視窗
+                    </button>
+                </div>
+            </div>
+
+            <!-- Compact Control Bar -->
+            <div class="sc-gantt-subbar">
+                <div class="d-flex flex-wrap align-items-center gap-3">
+                    <div class="sc-pill sc-pill-gantt">
+                        進度合計：<span id="total_progress" class="fw-bold">{{ root_item.unit_price|cutzero }}</span> %
+                    </div>
+                    <div class="d-flex align-items-center gap-2 small">
+                        <span>目標工期：<strong class="text-primary" id="version_duration">{{ version.duration }}</strong> 天</span>
+                        <button class="btn sc-btn sc-btn-amber py-0 px-2" style="font-size:0.78rem;" type="button" onclick="scroll_to_end()">移動至目標天數</button>
+                    </div>
+                    <label class="d-flex align-items-center gap-2 small mb-0 pointer">
+                        <input type="checkbox" style="width:18px;height:18px;accent-color:#2563eb;" id="reject_over_day" checked>
+                        <span class="text-secondary fw-semibold">編輯限制於目標天數內</span>
+                    </label>
+                </div>
+
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-1">
+                        <button class="btn btn-sm btn-primary change_scale" type="button" scale="1">日檢視</button>
+                        <button class="btn btn-sm btn-info change_scale" type="button" scale="7">7日檢視</button>
+                        <button class="btn btn-sm btn-info change_scale" type="button" scale="10">10天檢視</button>
+                        <button class="btn btn-sm btn-info change_scale" type="button" scale="15">15天檢視</button>
+                        <button class="btn btn-sm btn-info change_scale" type="button" scale="30">30天檢視</button>
+                    </div>
+
+                    <div id="div_update_dutton" style="display:none;" class="ms-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="page_have_change_msg sc-pill sc-pill-danger">有未儲存變更</span>
+                            <button class="btn btn-success sc-btn py-1 px-3 text-white" id="update_items" type="button">
+                                <span class="material-icons">save</span>送出資料並更新
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="box d-flex flex-column" style="flex: 1 1 100%; height: 100%; overflow: auto; background: #ffffff;">
+            <div class="sc-gantt-notice" style="flex: 0 0 auto;">
+                <span class="material-icons" style="font-size:16px;">info</span>
+                <span>可雙擊工項編輯或直接拖拉進度橫條調整日期、間隔與前後置連線；修改完成後請點擊右上方出現的「送出資料並更新」按鈕。</span>
+            </div>
+            <div class="row content mx-0" id="gantt_here" style="flex: 1 1 100%; height: 100%; width:100%;"></div>
+        </div>
+    </div>
+</body>
+</html>

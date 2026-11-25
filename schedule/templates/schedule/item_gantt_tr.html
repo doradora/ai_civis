@@ -1,0 +1,150 @@
+{% load humanize %}
+{% load static %}
+{% load schedule_tags %}
+<tr id="tr_item_{{ item.id }}" row_id="{{ item.id }}" top_dir="{{ item.read_top_dir_in_list }}" uplevel_id="{{ item.uplevel.id|default:'' }}" class="{% if item.kind.id == 10 %}table-warning{% else %}table-light{% endif %}" kind_id="{{ item.kind.id }}" kind="{{ item.kind.value }}">
+    <td class="right_click_menu" style="text-align: left;vertical-align: middle">
+        <span>{{ item.symbol }}</span>
+    </td>
+    {% if version.schedule_setting_type == 2 %}
+        <td class="right_click_menu" style="text-align: center;vertical-align: middle">
+            {% if item.uplevel %}
+                <input class="set_main_item" type="checkbox" name="is_main_item" {% if item.is_main_item %}checked{% endif %} style="width:25px;height:25px">
+            {% endif %}
+        </td>
+        <td class="right_click_menu" style="text-align: center;vertical-align: middle">
+            {% if item.uplevel %}
+                <input class="set_cp" type="checkbox" name="cp" {% if item.cp %}checked{% endif %} style="width:25px;height:25px">
+            {% endif %}
+        </td>
+    {% endif %}
+    <td id="td_item_name_{{ item.id }}" class="padding_{{ item.read_level_num }} right_click_menu" style="vertical-align: middle">
+        <div class="input-group">
+            <span class="input-group-text" style="border:0;background-color:inherit">
+                {% if item.kind.value == "目錄" %}
+                    <img class="pointer show_hide_sub_item" style="width:20px;" src="{% static 'schedule/images/folder_close.png' %}">
+                {% elif item.uplevel %}
+                    <img src="{% static 'schedule/images/T.png' %}" width="20">
+                {% endif %}
+                {% if item.kind.value == "目錄" %}
+                    <img src="{% static 'schedule/images/dir.png' %}" width="20">
+                {% else %}
+                    <img src="{% static 'schedule/images/item.png' %}" width="15">
+                {% endif %}
+            </span>
+            {% if item.uplevel %}
+                <input
+                    type="text" class="BlurUpdateInfo form-control arrow_keys_to_detect"
+                    field_type="str"
+                    row_id="{{ item.id }}"
+                    placeholder="請輸入項目名稱"
+                    tabindex="{{ forloop.counter }}0"
+                    field_name="name"
+                    table_name="scheduleitem"
+                    module_name="schedule"
+                    old_value="{{ item.name|default_if_none:'' }}"
+                    value="{{ item.name|default_if_none:'' }}"/>
+            {% else %}
+                <input class="form-control" value="{{ item.name|default_if_none:'' }}" disabled>
+            {% endif %}
+        </div>
+    </td>
+    <td class="right_click_menu" field_name="delta" style="text-align: right;vertical-align: middle">
+        <div class="input-group">
+            {% if item.kind.value != "目錄" %}
+                <input
+                    id="edit_part_delta_{{ item.id }}"
+                    type="text" class="update_ef_from_delta span1 arrow_keys_to_detect form-control"
+                    style="text-align: right;border-color: #00C102;border-width:1px;"
+                    tabindex="{{ forloop.counter }}1"
+                    row_id="{{ item.id }}"
+                    field_name="delta"
+                    old_value="{{ item.get_delta }}"
+                    value="{{ item.get_delta }}"/>
+                <span class="input-group-text">日</span>
+            {% endif %}
+        </div>
+    </td>
+    <td class="right_click_menu" field_name="es" style="text-align: right;vertical-align: middle">
+        {% if item.kind.value == "目錄" %}
+            <div class="input-group">
+                <span class="input-group-text">第</span>
+                <input id="span_part_es_{{ item.id }}" class="form-control" value="{{ item.es }}" style="text-align:right" disabled>
+                <span class="input-group-text">天</span>
+            </div>
+        {% else %}
+            <div class="input-group">
+                <span class="input-group-text">第</span>
+                <input
+                    id="edit_part_es_{{ item.id }}"
+                    type="text" class="BlurUpdateInfo recount_day needExist span1 arrow_keys_to_detect form-control"
+                    style="text-align: right;"
+                    field_type="int"
+                    no_change="true"
+                    tabindex="{{ forloop.counter }}2"
+                    row_id="{{ item.id }}"
+                    field_name="es"
+                    table_name="scheduleitem"
+                    module_name="schedule"
+                    old_value="{{ item.es }}"
+                    value="{{ item.es }}"/>
+            </div>
+        {% endif %}
+    </td>
+    <td class="right_click_menu" field_name="ef" style="text-align: right;vertical-align: middle">
+        {% if item.kind.value == "目錄" %}
+            <div class="input-group">
+                <span class="input-group-text">第</span>
+                <input id="span_part_ef_{{ item.id }}" class="form-control" value="{{ item.ef }}" style="text-align:right" disabled>
+                <span class="input-group-text">天</span>
+            </div>
+        {% else %}
+            <div class="input-group">
+                <span class="input-group-text">第</span>
+                <input
+                    id="edit_part_ef_{{ item.id }}"
+                    type="text" class="BlurUpdateInfo recount_day needExist span1 arrow_keys_to_detect form-control"
+                    style="text-align: right;" disabled
+                    field_type="int"
+                    no_change="true"
+                    tabindex="{{ forloop.counter }}3"
+                    row_id="{{ item.id }}"
+                    field_name="ef"
+                    table_name="scheduleitem"
+                    module_name="schedule"
+                    old_value="{{ item.ef }}"
+                    value="{{ item.ef }}"/>
+                <span class="input-group-text">天</span>
+            </div>
+        {% endif %}
+    </td>
+    <td id="td_item_unit_price_{{ item.id }}" style="text-align: right;vertical-align: middle" row_id="{{ item.id }}" field_name="unit_price" real_price="{{ item.unit_price }}">
+        {% if item.kind.value == "目錄" %}
+            <span id="show_part_unit_price_{{ item.id }}">{{ item.unit_price|floatformat:10|intcomma|cutzero }}</span>
+            <span class="use_money_type">%</span>
+        {% else %}
+            <div class="input-group">
+                <input
+                    id="edit_part_unit_price_{{ item.id }}"
+                    type="text" class="recount_price BlurUpdateInfo needExist arrow_keys_to_detect form-control"
+                    style="text-align: right"
+                    field_type="float"
+                    oninput="return transfer_money_or_rate(event)"
+                    no_change="true"
+                    tabindex="{{ forloop.counter }}6"
+                    row_id="{{ item.id }}"
+                    field_name="unit_price"
+                    table_name="scheduleitem"
+                    module_name="schedule"
+                    old_value="{{ item.unit_price|floatformat:10|cutzero|default_if_none:'' }}"
+                    value="{{ item.unit_price|floatformat:10|cutzero|default_if_none:'' }}"/>
+                <span class="input-group-text use_money_type">%</span>
+            </div>
+        {% endif %}
+    </td>
+    <td style="text-align: right;vertical-align: middle">
+        <span class="transfer_value" id="transfer_value_{{ item.id }}" row_id="{{ item.id }}">
+            {{ item.transfer_value|floatformat:10|intcomma|cutzero }}
+        </span>
+        <span class="another_use_money_type">元</span>
+    </td>
+</tr>

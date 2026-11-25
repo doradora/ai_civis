@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}編輯樣板：{{ template.name }} - AI Civis{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <a href="{% url 'audit:template_list' %}" class="text-decoration-none small">&larr; 返回樣板列表</a>
+        <h4 class="fw-bold mb-0">{{ template.name }} <span class="badge {% if template.check_type == 'spot_check' %}bg-primary{% else %}bg-success{% endif %} fs-6">{{ template.get_check_type_display }}</span></h4>
+    </div>
+    <a href="{% url 'audit:template_export_docx' template.id %}" class="btn btn-outline-primary btn-sm">匯出空白 Word 表單 (.docx)</a>
+</div>
+
+<div class="row g-3">
+    <!-- Left: Meta -->
+    <div class="col-lg-4">
+        <div class="card p-3 mb-3">
+            <h6 class="fw-bold mb-3">樣板基本設定</h6>
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="update_meta">
+                <div class="mb-2">
+                    <label class="form-label small mb-1">樣板名稱</label>
+                    <input type="text" name="name" value="{{ template.name }}" class="form-control form-control-sm" required>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">分項工程名稱</label>
+                    <input type="text" name="work_item_name" value="{{ template.work_item_name }}" class="form-control form-control-sm">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">表單種類</label>
+                    <select name="check_type" class="form-select form-select-sm">
+                        <option value="spot_check" {% if template.check_type == 'spot_check' %}selected{% endif %}>施工抽(查)驗表</option>
+                        <option value="self_check" {% if template.check_type == 'self_check' %}selected{% endif %}>自主檢查表</option>
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">所屬工程案</label>
+                    <select name="project_id" class="form-select form-select-sm">
+                        <option value="">-- 通用樣板 --</option>
+                        {% for p in projects %}
+                            <option value="{{ p.id }}" {% if template.project_id == p.id %}selected{% endif %}>{{ p }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">簽名欄角色（每行一項）</label>
+                    <textarea name="signature_labels_text" rows="3" class="form-control form-control-sm">{{ signature_labels_text }}</textarea>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">檢查時機選項（每行一項）</label>
+                    <textarea name="timing_options_text" rows="3" class="form-control form-control-sm">{{ timing_options_text }}</textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small mb-1">說明備註</label>
+                    <textarea name="note" rows="2" class="form-control form-control-sm">{{ template.note }}</textarea>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm w-100">儲存基本設定</button>
+            </form>
+        </div>
+
+        <div class="card p-3">
+            <h6 class="fw-bold mb-2">新增檢查階段</h6>
+            <form method="post" class="d-flex gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="add_stage">
+                <input type="text" name="stage_name" class="form-control form-control-sm" placeholder="例如：材料進場" required>
+                <button type="submit" class="btn btn-outline-success btn-sm text-nowrap">+ 新增</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Right: Stages & Criteria -->
+    <div class="col-lg-8 d-flex flex-column gap-3">
+        {% for stage in stages %}
+        <div class="card p-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="fw-bold mb-0 text-primary">階段 {{ forloop.counter }}：{{ stage.name }}</h6>
+                <form method="post" onsubmit="return confirm('確定刪除此檢查階段及其所有細項？');">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="delete_stage">
+                    <input type="hidden" name="stage_id" value="{{ stage.id }}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger py-0">刪除階段</button>
+                </form>
+            </div>
+            <div class="table-responsive mb-2">
+                <table class="table table-sm align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:45px">#</th>
+                            <th>查驗細項</th>
+                            <th>檢驗標準（定性或量化數據）</th>
+                            <th style="width:110px" class="text-end">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for crit in stage.criteria.all %}
+                        <tr>
+                            <td>{{ forloop.counter }}</td>
+                            <td>
+                                <form method="post" id="crit-form-{{ crit.id }}">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="update_criterion">
+                                    <input type="hidden" name="criterion_id" value="{{ crit.id }}">
+                                    <input type="text" name="criterion_name" value="{{ crit.name }}" class="form-control form-control-sm">
+                                </form>
+                            </td>
+                            <td>
+                                <input form="crit-form-{{ crit.id }}" type="text" name="criterion_standard" value="{{ crit.standard }}" class="form-control form-control-sm">
+                            </td>
+                            <td class="text-end text-nowrap">
+                                <button form="crit-form-{{ crit.id }}" type="submit" class="btn btn-sm btn-outline-primary py-0">存</button>
+                                <form method="post" class="d-inline" onsubmit="return confirm('確定刪除此細項？');">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="delete_criterion">
+                                    <input type="hidden" name="criterion_id" value="{{ crit.id }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger py-0">刪</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="4" class="text-muted small text-center py-2">尚無查驗細項</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <form method="post" class="row g-2 mt-1">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="add_criterion">
+                <input type="hidden" name="stage_id" value="{{ stage.id }}">
+                <div class="col-md-5">
+                    <input type="text" name="criterion_name" class="form-control form-control-sm" placeholder="新增查驗細項..." required>
+                </div>
+                <div class="col-md-5">
+                    <input type="text" name="criterion_standard" class="form-control form-control-sm" placeholder="檢驗標準（例如：±5mm 以內）">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-outline-success btn-sm w-100">+ 新增細項</button>
+                </div>
+            </form>
+        </div>
+        {% empty %}
+        <div class="card p-4 text-center text-muted">尚未建立任何檢查階段。</div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

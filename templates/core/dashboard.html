@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}系統總覽 - AI Civis{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="fw-bold mb-1">AI Civis 工程管理功能測試平台</h3>
+        <p class="text-muted mb-0">參考 JSRCM 獨立簡化改寫：涵蓋 <strong>預定進度 (Schedule)</strong> 與 <strong>施工抽查驗 (Audit)</strong> 核心功能</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'schedule.views.manage_schedule' %}" class="btn btn-primary">進入預定進度精靈</a>
+        <a href="{% url 'audit:case_list' %}" class="btn btn-success">進入施工抽查驗</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-2 col-sm-6">
+        <div class="card stat-card p-3">
+            <div class="text-muted small">工程案數量</div>
+            <div class="fs-2 fw-bold text-primary">{{ stats.project_count }}</div>
+            <a href="{% url 'core:project_list' %}" class="small text-decoration-none">管理工程案 &rarr;</a>
+        </div>
+    </div>
+    <div class="col-md-2 col-sm-6">
+        <div class="card stat-card p-3">
+            <div class="text-muted small">進度版本數</div>
+            <div class="fs-2 fw-bold text-info">{{ stats.schedule_count }}</div>
+            <a href="{% url 'schedule.views.manage_schedule' %}" class="small text-decoration-none">管理進度 &rarr;</a>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="card stat-card p-3">
+            <div class="text-muted small">抽查 / 自檢樣板</div>
+            <div class="fs-2 fw-bold text-secondary">{{ stats.template_count }}</div>
+            <a href="{% url 'audit:template_list' %}" class="small text-decoration-none">編輯樣板 &rarr;</a>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="card stat-card p-3">
+            <div class="text-muted small">抽查驗紀錄</div>
+            <div class="fs-2 fw-bold text-success">{{ stats.case_count }}</div>
+            <a href="{% url 'audit:case_list' %}" class="small text-decoration-none">填寫紀錄 &rarr;</a>
+        </div>
+    </div>
+    <div class="col-md-2 col-sm-6">
+        <div class="card stat-card p-3">
+            <div class="text-muted small">待複查缺失</div>
+            <div class="fs-2 fw-bold text-danger">{{ stats.open_fault_count }}</div>
+            <a href="{% url 'audit:fault_list' %}?status=open" class="small text-decoration-none">追蹤改善 &rarr;</a>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold mb-0">近期預定進度版本 (Schedule)</h5>
+                <a href="{% url 'schedule.views.manage_schedule' %}" class="btn btn-sm btn-outline-primary">全部</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>工程 / 草稿</th>
+                            <th>模式</th>
+                            <th>目標工期</th>
+                            <th>總權重</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for v in recent_schedules %}
+                        <tr>
+                            <td>
+                                <div class="fw-semibold">{{ v.display_name }}</div>
+                                <small class="text-muted">{{ v.update_time|date:"Y-m-d H:i" }}</small>
+                            </td>
+                            <td><span class="badge bg-info text-dark">{{ v.setting_type_name }}</span></td>
+                            <td>{{ v.duration }} 天</td>
+                            <td>{{ v.total_weight|floatformat:2 }}%</td>
+                            <td class="text-end">
+                                <a href="{% url 'schedule.views.item_profile' version_id=v.id %}" class="btn btn-sm btn-primary">開啟</a>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="5" class="text-center text-muted py-3">尚無資料</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold mb-0">近期抽查驗紀錄 (Audit)</h5>
+                <a href="{% url 'audit:case_list' %}" class="btn btn-sm btn-outline-success">全部</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>表單 / 工程</th>
+                            <th>種類</th>
+                            <th>查驗日期</th>
+                            <th>結果</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for c in recent_cases %}
+                        <tr>
+                            <td>
+                                <div class="fw-semibold">{{ c.name }}</div>
+                                <small class="text-muted">{{ c.project.name }}</small>
+                            </td>
+                            <td><span class="badge bg-secondary">{{ c.get_check_type_display }}</span></td>
+                            <td>{{ c.check_date|date:"Y-m-d" }}</td>
+                            <td>
+                                {% if c.is_passed %}
+                                    <span class="badge bg-success">合格</span>
+                                {% else %}
+                                    <span class="badge bg-danger">不合格 ({{ c.fail_count }})</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <a href="{% url 'audit:case_edit' c.id %}" class="btn btn-sm btn-success">編輯</a>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="5" class="text-center text-muted py-3">尚無資料</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

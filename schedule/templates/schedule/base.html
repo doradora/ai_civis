@@ -1,0 +1,78 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-hant">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+        <link rel="stylesheet" href="{% static 'schedule/plugin/viewerjs/viewer.css' %}">
+        <script type="text/javascript" src="{% static 'schedule/plugin/viewerjs/viewer.min.js' %}"></script>
+
+        <link href="{% static 'schedule/bootstrap5/css/bootstrap.min.css' %}" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+        <link rel="stylesheet" type="text/css" href="{% static 'schedule/plugin/lobibox-1.2.4/css/lobibox.css' %}"/>
+        <link rel="stylesheet" type="text/css" href="{% static 'schedule/plugin/jquery/smoothness/jquery-ui-1.10.3.custom.css' %}"/>
+        <link rel="stylesheet" href="{% static 'schedule/css/base.css' %}">
+        <link rel="stylesheet" href="{% static 'schedule/css/schedule_modern.css' %}">
+
+        <script src="{% static 'schedule/plugin/jquery/jquery-3.6.0.min.js' %}"></script>
+        <script type="text/javascript" src="{% static 'schedule/plugin/jquery/jquery-ui-1.10.3.custom.js' %}"></script>
+        <script type="text/javascript" src="{% static 'schedule/js/jquery.tmpl.min.js' %}"></script>
+        <script src="{% static 'schedule/bootstrap5/js/bootstrap.bundle.min.js' %}"></script>
+        <script type="text/javascript" src="{% static 'schedule/plugin/lobibox-1.2.4/js/lobibox.js' %}"></script>
+        <script src="{% static 'schedule/plugin/Chart.js/moment.js' %}"></script>
+        <script src="{% static 'schedule/plugin/vue/vue.min.js' %}"></script>
+        <script src="{% static 'schedule/js/base.js' %}"></script>
+
+        <title>預定進度設定精靈 - {{ version.project_name }}</title>
+        <script type="text/javascript">
+            var CSRFMIDDLEWARETOKEN;
+            var STATIC_PATH = '{% static '' %}';
+            var request_user_id = '{{ request.user.id|default:"" }}';
+            $(document).ready(function(){
+                CSRFMIDDLEWARETOKEN = $('input[name=csrfmiddlewaretoken]').val();
+            });
+        </script>
+        {% block script %}
+        {% endblock %}
+        <style>
+            html, body{
+                height: 100%;
+                width: 100%;
+                padding: 0px;
+                margin: 0px;
+            }
+            @media screen and (max-width: 768px){
+                .rwd-hide{
+                    display: none !important;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div id="base-wrapper" class="d-flex flex-column h-100">
+            <header class="sc-topbar d-flex align-items-center justify-content-between gap-3" style="flex: 0 0 auto;">
+                <div class="d-flex align-items-center gap-2" style="min-width: 0; flex: 1 1 auto;">
+                    <a href="/schedule/manage_schedule/" class="sc-back-btn" title="返回預定進度精靈列表">
+                        <span class="material-icons">arrow_back</span>
+                    </a>
+                    <div class="sc-title-wrap">
+                        <span id="version_project_name" title="{{ version.project_name }}">{{ version.project_name }}</span>
+                        <i class="material-icons pointer" id="edit_version_project_name" title="點擊修改草稿名稱">edit</i>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2" style="flex: 0 0 auto;">
+                    <a href="{% url 'core:dashboard' %}" class="sc-home-btn">
+                        <span class="material-icons" style="font-size:17px;">dashboard</span>
+                        <span class="rwd-hide">系統總覽</span>
+                    </a>
+                </div>
+            </header>
+            {% csrf_token %}
+            <div id="content-div" class="sc-workspace" style="flex: 1 1 100%; height: 100%; overflow: auto;">
+                {% block body %}
+                {% endblock %}
+            </div>
+        </div>
+    </body>
+</html>

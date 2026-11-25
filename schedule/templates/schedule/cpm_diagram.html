@@ -1,0 +1,407 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="zh-hant">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+        <link href="{% static 'schedule/plugin/vue_loading/vue_loading.css' %}" rel="stylesheet">
+        <link href="{% static 'schedule/bootstrap5/css/bootstrap.min.css' %}" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+        <link rel="stylesheet" type="text/css" href="{% static 'schedule/plugin/lobibox-1.2.4/css/lobibox.css' %}"/>
+        <link rel="stylesheet" href="{% static 'schedule/cpm/scss/graph.css' %}">
+        <link rel="stylesheet" href="{% static 'schedule/css/schedule_modern.css' %}">
+
+        <style>
+            .graph-div #create-item-btn {
+                top: 14px;
+                left: 14px;
+                border-radius: 10px;
+                box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+                font-weight: 600;
+            }
+            .graph-div #rerender-node-btn {
+                top: 14px;
+                left: 138px;
+                border-radius: 10px;
+                box-shadow: 0 3px 10px rgba(15, 23, 42, 0.1);
+                font-weight: 600;
+                border-color: #cbd5e1;
+                color: #1e293b;
+            }
+            .graph-div #rerender-node-btn:hover {
+                background-color: #2563eb;
+                border-color: #2563eb;
+                color: #ffffff;
+            }
+            #info-bar {
+                top: 14px;
+                right: 14px;
+            }
+            .graph-div #settings-notice {
+                top: 56px;
+                right: 14px;
+            }
+            .sc-dark-btn {
+                background: rgba(255, 255, 255, 0.1);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                color: #f1f5f9;
+                border-radius: 9px;
+                font-size: 0.84rem;
+                font-weight: 600;
+                padding: 0.38rem 0.72rem;
+                display: inline-flex;
+                align-items: center;
+                gap: 0.3rem;
+                transition: all 0.16s ease;
+            }
+            .sc-dark-btn:hover {
+                background: rgba(255, 255, 255, 0.2);
+                color: #ffffff;
+            }
+            .sc-dark-btn .material-icons { font-size: 18px; }
+        </style>
+
+        <title>CPM 網圖編輯 - {{ version.project_name }}</title>
+    </head>
+    <body style="overflow: hidden;">
+        <div id="cpm-graph" style="height: 100vh;" v-cloak>
+            {% csrf_token %}
+
+            <div id="loader"></div>
+
+            <div class="d-flex flex-column" style="height: 100%; width: 100%;">
+                <!-- Top Control Bar -->
+                <div id="control-bar-outside-div" class="sc-cpm-topbar row mx-0 align-items-center">
+                    <div class="col-md-6 px-0 d-flex align-items-center gap-2" style="overflow: auto; white-space: nowrap;">
+                        <span class="material-icons text-info">hub</span>
+                        <span class="fw-bold" style="font-size: 1.1rem;">{{ version.project_name }}</span>
+                        <span class="badge rounded-pill" style="background:rgba(255,255,255,0.12);color:#cbd5e1;font-weight:500;">
+                            建立：{{ version.create_time|date:'Y-m-d H:i' }}
+                        </span>
+                    </div>
+                    <div class="col-md-6 px-0 text-end">
+                        <div id="control-bar-outside" class="edit-bar d-flex flex-wrap gap-2 justify-content-end" role="group">
+                            <button
+                                id="import-data-btn"
+                                type="button"
+                                class="sc-dark-btn"
+                                data-bs-toggle="tooltip"
+                                data-bs-placement="bottom"
+                                title="使用 Excel 匯入工項"
+                                @click="show_import_data_modal"
+                            >
+                                <span class="material-icons">upload_file</span>
+                                <span class="rwd-hide">匯入</span>
+                            </button>
+
+                            <button
+                                id="balance-100-btn"
+                                type="button"
+                                class="sc-dark-btn"
+                                @click="update_to_100_progress()"
+                                data-bs-toggle="tooltip"
+                                data-bs-placement="bottom"
+                                title="進度自動調整到 100%"
+                            >
+                                <span class="material-icons">pie_chart</span>
+                                <span class="rwd-hide">配平 100%</span>
+                            </button>
+
+                            <button
+                                id="save-edit-btn"
+                                type="button"
+                                class="sc-dark-btn"
+                                @click="save_edited_result()"
+                                data-bs-toggle="tooltip"
+                                data-bs-placement="bottom"
+                                title="儲存編輯資料"
+                            >
+                                <span class="material-icons">save</span>
+                                <span class="rwd-hide">儲存</span>
+                            </button>
+
+                            <button
+                                id="calc-save-btn"
+                                type="button"
+                                class="btn sc-btn sc-btn-primary py-1 px-3"
+                                data-bs-toggle="tooltip"
+                                data-bs-placement="bottom"
+                                title="送出計算要徑並發佈圖檔"
+                                @click="show_update_data_modal()"
+                            >
+                                <span class="material-icons">calculate</span>
+                                <span>計算並發佈</span>
+                            </button>
+
+                            <button
+                                id="export-image-btn"
+                                type="button"
+                                class="btn sc-btn btn-success py-1 px-2"
+                                @click="export_image()"
+                                data-bs-toggle="tooltip"
+                                data-bs-placement="bottom"
+                                title="下載網圖 JPG"
+                            >
+                                <span class="material-icons">file_download</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Interactive GoJS Canvas -->
+                <div id="edit-graph" class="graph-div sc-cpm-canvas d-flex flex-column" style="height: 100%; flex: 1 1 100%;">
+                    <div v-cloak id="info-bar" class="sc-float-pill">
+                        <small>
+                            總比率:
+                            <strong v-cloak :class="fix_float_num(total_unit_price) > 100 ? 'text-danger' : total_unit_price == 100 ? 'text-success' : 'text-primary'">
+                                [[ fix_float_num(total_unit_price) ]]%
+                            </strong>
+                            <span class="mx-2 text-muted">|</span>
+                            總工項: <strong v-cloak v-if="node_data_array.length - 2 >= 0">[[ node_data_array.length - 2 ]]</strong>
+                            <span class="mx-2 text-muted">|</span>
+                            總連結數: <strong v-cloak>[[ link_data_array.length ]]</strong>
+                        </small>
+                    </div>
+
+                    <span id="settings-notice" class="sc-float-pill">
+                        <span>目標總施工天數: <strong>{{ total_days }} 天</strong>（目前設定: <strong class="text-primary">[[ graph_setting_duration ]] 天</strong>）</span>
+                        <br v-if="detect_is_project_total_days_distance !== 0">
+                        <span v-if="detect_is_project_total_days_distance < 0" class="text-warning fw-bold pt-1 d-inline-flex align-items-center">
+                            <span>CPM 總工期不足目標天數</span>
+                            <button
+                                type="button"
+                                class="btn btn-primary btn-sm ms-2 py-0 px-2"
+                                style="border-radius:7px;"
+                                @click="show_auto_count_duration_modal()"
+                            >
+                                系統自動補滿
+                            </button>
+                        </span>
+                        <span v-else-if="detect_is_project_total_days_distance > 0" class="text-danger fw-bold">
+                            <span>CPM 總施工天數超過目標工期，請調整</span>
+                        </span>
+                    </span>
+
+                    <button
+                        id="create-item-btn" type="button" class="btn btn-success sc-btn" @click="add_item_edit_mode()"
+                        data-bs-toggle="tooltip" data-bs-placement="bottom" title="新增工項節點"
+                    >
+                        <span class="material-icons">add</span>
+                        <span><span class="rwd-hide">新增</span>工項</span>
+                    </button>
+
+                    <button
+                        id="rerender-node-btn"
+                        type="button"
+                        class="btn sc-btn"
+                        @click="rerender_node_position()"
+                        data-bs-toggle="tooltip"
+                        data-bs-placement="bottom"
+                        title="優化工項排列位置"
+                    >
+                        <span class="material-icons">auto_fix_high</span>
+                        <span><span class="rwd-hide">優化工項</span>排列</span>
+                    </button>
+
+                    <div style="height: 100%; flex: 1 1 100%; position: relative;">
+                        <div id="DiagramDivEdit" style="height: 100%;"></div>
+                    </div>
+                    <img src="{% static 'schedule/cpm/img/cpm_legend.png' %}" alt="CPM 圖例" class="sc-cpm-legend">
+                </div>
+            </div>
+
+            <!-- edit_link_modal -->
+            <div class="modal fade" id="edit_link_modal" tabindex="-1" aria-labelledby="edit_link_modalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-md modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="edit_link_modalLabel">編輯前後置連結</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" @click="cancel_update_link()"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                            <form>
+                                <div class="mb-3">
+                                    <label class="form-label text-secondary small">起始工項</label>
+                                    <div class="fw-bold fs-6">[[ temp_selected_link.from_text ]]</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label text-secondary small">結束工項</label>
+                                    <div class="fw-bold fs-6">[[ temp_selected_link.to_text ]]</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-semibold">關係模式</label>
+                                    <select v-if="is_graph_edit" class="form-select" v-model="temp_selected_link.mode">
+                                        <option value="FS" selected>
+                                            FS [ [[ temp_selected_link.from_text && temp_selected_link.from_text.length > 14 ? temp_selected_link.from_text.slice(0, 14) + '...' : temp_selected_link.from_text ]] ] 結束後 [ [[ temp_selected_link.to_text && temp_selected_link.to_text.length > 14 ? temp_selected_link.to_text.slice(0, 14) + '...' : temp_selected_link.to_text ]] ] 開始
+                                        </option>
+                                        <option value="SF">
+                                            SF [ [[ temp_selected_link.from_text && temp_selected_link.from_text.length > 14 ? temp_selected_link.from_text.slice(0, 14) + '...' : temp_selected_link.from_text ]] ] 開始後 [ [[ temp_selected_link.to_text && temp_selected_link.to_text.length > 14 ? temp_selected_link.to_text.slice(0, 14) + '...' : temp_selected_link.to_text ]] ] 結束
+                                        </option>
+                                        <option value="FF">
+                                            FF [ [[ temp_selected_link.from_text && temp_selected_link.from_text.length > 14 ? temp_selected_link.from_text.slice(0, 14) + '...' : temp_selected_link.from_text ]] ] 結束後 [ [[ temp_selected_link.to_text && temp_selected_link.to_text.length > 14 ? temp_selected_link.to_text.slice(0, 14) + '...' : temp_selected_link.to_text ]] ] 結束
+                                        </option>
+                                        <option value="SS">
+                                            SS [ [[ temp_selected_link.from_text && temp_selected_link.from_text.length > 14 ? temp_selected_link.from_text.slice(0, 14) + '...' : temp_selected_link.from_text ]] ] 開始後 [ [[ temp_selected_link.to_text && temp_selected_link.to_text.length > 14 ? temp_selected_link.to_text.slice(0, 14) + '...' : temp_selected_link.to_text ]] ] 開始
+                                        </option>
+                                    </select>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label fw-semibold">等待天數 (Lag)</label>
+                                    <input v-if="is_graph_edit" type="number" class="form-control" v-model="temp_selected_link.lag">
+                                    <div v-else v-cloak>[[ temp_selected_link.lag ]]</div>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="modal-footer">
+                            <button v-if="is_graph_edit" type="button" class="btn btn-outline-danger me-auto" @click="remove_link()">移除連結</button>
+                            <button type="button" class="btn btn-light border" data-bs-dismiss="modal" @click="cancel_update_link()">取消</button>
+                            <button v-if="is_graph_edit" type="button" class="btn sc-btn sc-btn-primary" @click="update_link()">更新連結</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- import_data_modal -->
+            <div class="modal fade" id="import_data_modal" tabindex="-1" aria-labelledby="import_data_modalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="import_data_modalLabel">使用系統制式 EXCEL 匯入</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                            <div class="alert alert-light border small mb-3">
+                                匯入系統制式 Excel 檔案將會<strong>全部取代目前節點設定</strong>。
+                            </div>
+                            <div class="d-flex align-items-center justify-content-between mb-3">
+                                <span class="fw-semibold small">1. 下載 Excel 制式範例檔案</span>
+                                <button class="btn sc-btn sc-btn-amber py-1 px-2" onclick="window.location=STATIC_PATH + 'schedule/document/sch_example_expert.xlsx'">下載格式範例</button>
+                            </div>
+                            <div class="d-flex align-items-center justify-content-between">
+                                <span class="fw-semibold small">2. 上傳 Excel 檔案</span>
+                                <button class="uploaderEXCEL btn sc-btn sc-btn-primary py-1 px-3" id="createItemByEXCEL">選擇 Excel 檔案</button>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- update_data_modal -->
+            <div class="modal fade" id="update_data_modal" tabindex="-1" aria-labelledby="update_data_modalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="update_data_modalLabel">發佈並更新預定進度</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                            <div class="alert alert-warning text-center mb-0">
+                                注意！
+                                <br>
+                                <span v-if="project_total_days > graph_setting_duration">
+                                    目前 CPM 總施工天數設定<strong>少於</strong>目標工期！
+                                </span>
+                                <span v-else-if="project_total_days < graph_setting_duration">
+                                    目前 CPM 總施工天數設定<strong>超過</strong>目標工期！
+                                </span>
+                                <br>
+                                發佈後，原本<strong>預定進度項目</strong>將全部被<span class="text-danger fw-bold">覆蓋</span>，請確認後再發佈。
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+                            <button type="button" class="btn sc-btn sc-btn-primary" @click="update_item_data()">確定發佈</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- auto_count_duration_modal -->
+            <div class="modal fade" id="auto_count_duration_modal" tabindex="-1" aria-labelledby="auto_count_duration_modalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="auto_count_duration_modalLabel">系統自動補滿工期至要徑</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                            <div v-cloak class="alert alert-warning small">
+                                目前 CPM 總工期為 <strong v-cloak>[[ graph_setting_duration ]] 天</strong>，不足目標工期 <strong>{{ total_days }} 天</strong>。
+                                系統可依比例將不足天數自動展延補滿至要徑工項（亦可自行修改下方目標天數）。
+                            </div>
+                            <label class="form-label fw-semibold">目標補滿天數</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" v-model="project_total_days" aria-label="補滿天數">
+                                <span class="input-group-text">天</span>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+                            <button type="button" class="btn sc-btn sc-btn-primary" @click="auto_fill_cpm_duration()">確定補滿</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script src="{% static 'schedule/plugin/vue/vue.min.js' %}"></script>
+        <script src="{% static 'schedule/plugin/jquery/jquery-3.6.0.min.js' %}"></script>
+        <script src="{% static 'schedule/plugin/plupload/jquery.plupload.queue/jquery.plupload.queue.js' %}"></script>
+        <script src="{% static 'schedule/plugin/plupload/js/plupload.full.js' %}"></script>
+        <script src="{% static 'schedule/plugin/vue_loading/vue_loading.js' %}"></script>
+        <script src="{% static 'schedule/bootstrap5/js/bootstrap.bundle.min.js' %}"></script>
+        <script type="text/javascript" src="{% static 'schedule/plugin/lobibox-1.2.4/js/lobibox.js' %}"></script>
+        <script src="{% static 'schedule/cpm/js/gojs/release/go-debug.js' %}"></script>
+        <script src="{% static 'schedule/cpm/js/axios/axios.js' %}"></script>
+
+        <script>
+            const STATIC_PATH = '{% static '' %}';
+            const SCHEDULE_VERSION_ID = "{{ version.id }}";
+            const MAPPING_ITEMS_COUNT = parseInt("{{ version.mapping_items_count|default:'0' }}");
+            const PROJECT_ID = "{{ project.id|default:'' }}";
+            const ROOT_ITEM_ID = "{{ root_item.id }}";
+            const PROJECT_TOTAL_DAYS = "{{ total_days }}";
+            var CSRFMIDDLEWARETOKEN = $('input[name=csrfmiddlewaretoken]').val();
+
+            Vue.use(VueLoading);
+
+            const LOADER = new Vue({
+                el: '#loader',
+                data() {
+                    return { visible: false, loader: {} }
+                },
+                components: { Loading: VueLoading },
+                methods: {
+                    open() {
+                        if(!this.visible){
+                            this.loader = this.$loading.show({
+                                loader: 'dots',
+                                color: '#2563eb',
+                                width: 64,
+                                height: 64,
+                                backgroundColor: '#ffffff',
+                            });
+                            this.show();
+                        }
+                    },
+                    close() {
+                        if(this.visible){
+                            this.loader.hide();
+                            this.hide();
+                        }
+                    },
+                    show() { this.visible = true; },
+                    hide() { this.visible = false; }
+                }
+            });
+        </script>
+
+        <script src="{% static 'schedule/js/cpm_api.js' %}"></script>
+        <script src="{% static 'schedule/cpm/js/main.js' %}"></script>
+    </body>
+</html>

@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}抽查與自主檢查樣板 - AI Civis{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h4 class="fw-bold mb-0">抽查 / 自主檢查樣板管理 (Audit Templates)</h4>
+        <small class="text-muted">建立並維護「施工抽(查)驗表」與「自主檢查表」樣板，支援一鍵複製與匯出 Word 空白表單</small>
+    </div>
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createTemplateModal">+ 新增樣板</button>
+</div>
+
+<div class="btn-group mb-3">
+    <a href="{% url 'audit:template_list' %}" class="btn btn-sm {% if not check_type %}btn-dark{% else %}btn-outline-dark{% endif %}">全部樣板</a>
+    <a href="{% url 'audit:template_list' %}?check_type=spot_check" class="btn btn-sm {% if check_type == 'spot_check' %}btn-primary{% else %}btn-outline-primary{% endif %}">施工抽(查)驗表</a>
+    <a href="{% url 'audit:template_list' %}?check_type=self_check" class="btn btn-sm {% if check_type == 'self_check' %}btn-success{% else %}btn-outline-success{% endif %}">自主檢查表</a>
+</div>
+
+<div class="row g-3">
+{% for tpl in templates %}
+    <div class="col-md-6 col-lg-4">
+        <div class="card p-3 h-100 d-flex flex-column">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <span class="badge {% if tpl.check_type == 'spot_check' %}bg-primary{% else %}bg-success{% endif %}">
+                    {{ tpl.get_check_type_display }}
+                </span>
+                <small class="text-muted">{% if tpl.project %}{{ tpl.project.name }}{% else %}共用樣板{% endif %}</small>
+            </div>
+            <h5 class="fw-bold mb-1">{{ tpl.name }}</h5>
+            <div class="small text-muted mb-2">分項工程：{{ tpl.work_item_name|default:"-" }}</div>
+            <p class="small text-secondary flex-grow-1">{{ tpl.note|default:"無備註說明" }}</p>
+            <div class="small text-muted mb-3">
+                階段數：<strong>{{ tpl.stages.count }}</strong> ｜
+                簽名欄：{{ tpl.get_signature_labels|join:"、" }}
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{% url 'audit:template_edit' tpl.id %}" class="btn btn-sm btn-primary">編輯細項</a>
+                <a href="{% url 'audit:template_export_docx' tpl.id %}" class="btn btn-sm btn-outline-secondary">匯出 Word</a>
+                <form method="post" class="d-inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="clone">
+                    <input type="hidden" name="template_id" value="{{ tpl.id }}">
+                    <button type="submit" class="btn btn-sm btn-outline-info">複製</button>
+                </form>
+                <form method="post" class="d-inline ms-auto" onsubmit="return confirm('確定刪除此樣板？');">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="template_id" value="{{ tpl.id }}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">刪除</button>
+                </form>
+            </div>
+        </div>
+    </div>
+{% empty %}
+    <div class="col-12"><div class="card p-5 text-center text-muted">尚無抽查樣板，請點選右上角新增。</div></div>
+{% endfor %}
+</div>
+
+<!-- Create Template Modal -->
+<div class="modal fade" id="createTemplateModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="post" class="modal-content">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="create">
+            <div class="modal-header">
+                <h5 class="modal-title">新增抽查 / 自主檢查樣板</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">表單種類</label>
+                    <select name="check_type" class="form-select">
+                        <option value="spot_check">施工抽(查)驗表（監造方）</option>
+                        <option value="self_check">自主檢查表（施工方）</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">樣板名稱 *</label>
+                    <input type="text" name="name" class="form-control" required placeholder="例如：瀝青混凝土鋪築抽查驗表">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">分項工程名稱</label>
+                    <input type="text" name="work_item_name" class="form-control" placeholder="例如：道路鋪面工程">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">所屬工程案（留空為通用樣板）</label>
+                    <select name="project_id" class="form-select">
+                        <option value="">-- 通用樣板 --</option>
+                        {% for p in projects %}
+                            <option value="{{ p.id }}">{{ p }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">樣板說明</label>
+                    <textarea name="note" rows="2" class="form-control"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="submit" class="btn btn-success">建立樣板</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}缺失改善追蹤 - AI Civis{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h4 class="fw-bold mb-0">缺失改善追蹤看板 (Audit Faults)</h4>
+        <small class="text-muted">集中管理所有抽查不合格項目、改善對策、前後相片與監造複查結果</small>
+    </div>
+    <div class="btn-group">
+        <a href="{% url 'audit:fault_list' %}?status=all" class="btn btn-sm {% if status == 'all' %}btn-dark{% else %}btn-outline-dark{% endif %}">全部</a>
+        <a href="{% url 'audit:fault_list' %}?status=open" class="btn btn-sm {% if status == 'open' %}btn-danger{% else %}btn-outline-danger{% endif %}">待改善 / 待複查</a>
+        <a href="{% url 'audit:fault_list' %}?status=closed" class="btn btn-sm {% if status == 'closed' %}btn-success{% else %}btn-outline-success{% endif %}">已結案</a>
+    </div>
+</div>
+
+{% for f in faults %}
+<div class="card p-3 mb-3 border-start border-4 {% if f.is_verified %}border-success{% elif f.is_improved %}border-warning{% else %}border-danger{% endif %}">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2">
+        <div>
+            <span class="badge bg-secondary me-1">#{{ f.id }}</span>
+            <strong>{{ f.detail.case.project.name }}</strong> ／
+            <a href="{% url 'audit:case_edit' f.detail.case.id %}" class="text-decoration-none">{{ f.detail.case.name }}</a>
+            <div class="small text-muted mt-1">
+                檢查階段：{{ f.detail.stage.name }} ｜ 查驗細項：<strong>{{ f.detail.name }}</strong> ｜ 查驗日期：{{ f.detail.case.check_date|date:"Y-m-d" }}
+            </div>
+        </div>
+        <div>
+            {% if f.is_verified %}
+                <span class="badge bg-success">複查確認合格（已結案）</span>
+            {% elif f.is_improved %}
+                <span class="badge bg-warning text-dark">已改善待複查</span>
+            {% else %}
+                <span class="badge bg-danger">缺失改善中</span>
+            {% endif %}
+            <a href="{% url 'audit:case_export_improve_docx' f.detail.case.id %}" class="btn btn-sm btn-outline-secondary ms-2">匯出改善表 Word</a>
+        </div>
+    </div>
+
+    <form method="post" class="mb-2">
+        {% csrf_token %}
+        <input type="hidden" name="fault_id" value="{{ f.id }}">
+        <div class="row g-2 mb-2">
+            <div class="col-md-4">
+                <label class="form-label small mb-1">缺失說明</label>
+                <textarea name="fault_note" rows="2" class="form-control form-control-sm">{{ f.fault_note }}</textarea>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small mb-1">改善對策</label>
+                <textarea name="improve_plan" rows="2" class="form-control form-control-sm">{{ f.improve_plan }}</textarea>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small mb-1">改善結果</label>
+                <textarea name="improve_note" rows="2" class="form-control form-control-sm">{{ f.improve_note }}</textarea>
+            </div>
+        </div>
+        <div class="d-flex flex-wrap align-items-center gap-4">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="is_improved" id="fl_imp_{{ f.id }}" {% if f.is_improved %}checked{% endif %}>
+                <label class="form-check-label small" for="fl_imp_{{ f.id }}">廠商已完成改善</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="is_verified" id="fl_ver_{{ f.id }}" {% if f.is_verified %}checked{% endif %}>
+                <label class="form-check-label small" for="fl_ver_{{ f.id }}">監造複查確認合格</label>
+            </div>
+            <button type="submit" class="btn btn-sm btn-primary ms-auto">儲存更新</button>
+        </div>
+    </form>
+
+    {% if f.photos.all %}
+        <div class="d-flex flex-wrap gap-2 mt-2">
+            {% for ph in f.photos.all %}
+                <div class="border rounded p-1" style="width:140px;">
+                    <img src="{{ ph.image.url }}" style="width:100%;height:80px;object-fit:cover;border-radius:4px;">
+                    <div class="small text-truncate">{{ ph.get_photo_type_display }}</div>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+</div>
+{% empty %}
+<div class="card p-5 text-center text-muted">目前沒有符合條件的缺失紀錄。</div>
+{% endfor %}
+{% endblock %}

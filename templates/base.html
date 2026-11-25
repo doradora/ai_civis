@@ -1,0 +1,61 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AI Civis 工程進度與抽查驗測試系統{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'vendor/bootstrap5/css/bootstrap.min.css' %}">
+    <link rel="stylesheet" href="{% static 'css/app.css' %}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm mb-4">
+    <div class="container-fluid px-4">
+        <a class="navbar-brand" href="{% url 'core:dashboard' %}">AI Civis 獨立測試系統</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="mainNav">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'core:dashboard' %}">總覽</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.url_name == 'project_list' %}active{% endif %}" href="{% url 'core:project_list' %}">工程案</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if '/schedule/' in request.path %}active{% endif %}" href="{% url 'schedule.views.manage_schedule' %}">預定進度 (Schedule)</a>
+                </li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if request.resolver_match.app_name == 'audit' %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown">
+                        施工抽查驗 (Audit)
+                    </a>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="{% url 'audit:template_list' %}">抽查 / 自檢樣板管理</a></li>
+                        <li><a class="dropdown-item" href="{% url 'audit:case_list' %}">工程抽查驗紀錄</a></li>
+                        <li><a class="dropdown-item" href="{% url 'audit:fault_list' %}">缺失改善追蹤</a></li>
+                    </ul>
+                </li>
+            </ul>
+            <a href="/admin/" class="btn btn-outline-light btn-sm" target="_blank">Django Admin</a>
+        </div>
+    </div>
+</nav>
+
+<main class="container-fluid px-4 pb-5">
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+    {% block content %}{% endblock %}
+</main>
+
+<script src="{% static 'vendor/bootstrap5/js/bootstrap.bundle.min.js' %}"></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

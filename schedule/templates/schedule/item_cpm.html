@@ -1,0 +1,418 @@
+{% extends 'schedule/base.html' %}
+{% load humanize %}
+{% load static %}
+{% load schedule_tags %}
+{% load i18n %}
+
+{% block script %}
+    <script src="{% static 'schedule/plugin/plupload/jquery.plupload.queue/jquery.plupload.queue.js' %}"></script>
+    <script src="{% static 'schedule/plugin/plupload/js/plupload.full.js' %}"></script>
+    <script type="text/javascript" src="{% static 'schedule/plugin/Chart.js/Chart2.4.bundle.js' %}"></script>
+    <script type="text/javascript" src="{% static 'schedule/plugin/Chart.js/utils.js' %}"></script>
+    <script type="text/javascript" src="{% static 'schedule/plugin/Chart.js/FileSaver.min.js' %}"></script>
+    <script type="text/javascript" src="{% static 'schedule/js/jquery.contextmenu.r2.js' %}"></script>
+    <script type="text/javascript" src="{% static 'schedule/js/item_gantt.js' %}"></script>
+
+    <style>
+        .tooltip { min-width: 260px; }
+        .viewer-container { width: 100% !important; height: 100% !important; }
+    </style>
+    <script>
+        var project_id = parseInt('{{ project.id|default:"0" }}');
+        {% if project %}
+            var project_name = '{{ project.name|escapejs }}'.replace('/./g', '');
+        {% else %}
+            var project_name = '{{ version.project_name|escapejs }}'.replace('/./g', '');
+        {% endif %}
+        var version_id = parseInt('{{ version.id }}');
+        var engs_price = parseFloat('{{ engs_price|default:"0" }}');
+        var schedule_setting_type = parseInt('{{ version.schedule_setting_type }}');
+    </script>
+{% endblock %}
+
+{% block body %}
+<div class="d-flex flex-column" style="width: 100%; height: 100%;">
+    <!-- KPI Info Cards -->
+    <div class="sc-kpi-grid" style="flex: 0 0 auto;">
+        <div class="sc-kpi-card">
+            <div class="sc-kpi-icon sky"><span class="material-icons">account_tree</span></div>
+            <div>
+                <div class="sc-kpi-label">預定進度模式</div>
+                <div class="sc-kpi-value">
+                    <span class="sc-pill sc-pill-cpm">節點要徑 CPM 模式</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="sc-kpi-card">
+            <div class="sc-kpi-icon blue"><span class="material-icons">event_available</span></div>
+            <div>
+                <div class="sc-kpi-label">此草稿目標總天數</div>
+                <div class="sc-kpi-value">
+                    <span><span class="text-primary" id="version_duration">{{ version.duration }}</span> 天</span>
+                    <button class="btn btn-sm sc-btn-soft py-0 px-2" style="font-size:0.78rem;border-radius:7px;" id="set_duration">設定</button>
+                    {% if not version.duration %}
+                        <span class="sc-pill sc-pill-danger" id="msg_no_duration">請先設定天數</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="sc-kpi-card">
+            <div class="sc-kpi-icon amber"><span class="material-icons">engineering</span></div>
+            <div style="min-width: 0;">
+                <div class="sc-kpi-label">對應工程案{% if engs_price %} · 契約金額{% endif %}</div>
+                <div class="sc-kpi-value" style="font-size: 0.92rem;">
+                    {% if project %}
+                        <span class="text-truncate" title="{{ project.name }}">{{ project.name }}</span>
+                        <a href="{% url 'core:project_list' %}" class="text-primary" title="工程案管理"><i class="material-icons align-middle" style="font-size:17px;">open_in_browser</i></a>
+                    {% else %}
+                        <span class="text-muted">無對應工程</span>
+                    {% endif %}
+                </div>
+                {% if engs_price %}
+                    <div class="small text-secondary">{{ engs_price|floatformat:1|intcomma|cutzero }} 元 (100%)</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="sc-kpi-card">
+            <div class="sc-kpi-icon emerald"><span class="material-icons">pie_chart</span></div>
+            <div>
+                <div class="sc-kpi-label">目前設定總比率</div>
+                <div class="sc-kpi-value">
+                    <span class="{% if root_item.unit_price == 100 %}text-success{% else %}text-primary{% endif %}">
+                        {{ root_item.unit_price|floatformat:5|cutzero }} %
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Toolbar -->
+    <div class="sc-toolbar" style="flex: 0 0 auto;">
+        <div class="sc-toolbar-group">
+            <button type="button" class="btn sc-btn sc-btn-primary open_cpm">
+                <i class="material-icons">hub</i>
+                <span><span class="rwd-hide">開啟 </span>CPM 網圖編輯</span>
+            </button>
+
+            <div class="btn-group" role="group">
+                <button id="btnGroupDrop2" type="button" class="btn sc-btn sc-btn-soft dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="material-icons">upload_file</i>
+                    <span>匯入<span class="rwd-hide">工項</span></span>
+                </button>
+                <ul class="dropdown-menu" aria-labelledby="btnGroupDrop2">
+                    <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#import_json_dialog"><span class="material-icons text-primary" style="font-size:18px;">data_object</span>精靈專用檔 Json 匯入</a></li>
+                    <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#import_scpm_dialog"><span class="material-icons text-info" style="font-size:18px;">restore</span>精靈備份檔 SCPM 匯入</a></li>
+                </ul>
+            </div>
+
+            <button type="button" class="btn sc-btn sc-btn-soft" id="draw_s_curve">
+                <i class="material-icons text-primary">show_chart</i>
+                <span><span class="rwd-hide">預定進度 </span>S 曲線</span>
+            </button>
+
+            <div class="btn-group" role="group">
+                <button id="btnGroupDrop1" type="button" class="btn sc-btn sc-btn-soft dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="material-icons text-success">file_download</i>
+                    <span>匯出<span class="rwd-hide">報表與圖檔</span></span>
+                </button>
+                <ul class="dropdown-menu" aria-labelledby="btnGroupDrop1">
+                    <li>
+                        <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#export_dailyreport_xlsx_dialog">
+                            <span class="material-icons text-success" style="font-size:18px;">table_view</span>匯出此版本 Excel [比率格式] (日報表用)
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#export_adm_dialog">
+                            <span class="material-icons text-danger" style="font-size:18px;">schema</span>匯出轉換 ADM 箭線圖 (PNG)
+                        </a>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                        <a class="dropdown-item" href="{% url 'schedule.views.make_json_scheduleitem' version_id=version.id %}?price_type=rate">
+                            <span class="material-icons text-primary" style="font-size:18px;">code</span>匯出此版本 Json [精靈專用檔]
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="{% url 'schedule.views.make_json_scheduleitem' version_id=version.id %}?price_type=rate&ext=scpm">
+                            <span class="material-icons text-info" style="font-size:18px;">backup</span>匯出此版本 SCPM [精靈備份檔]
+                        </a>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                        <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#export_gantt_xlsx_dialog">
+                            <span class="material-icons text-success" style="font-size:18px;">view_timeline</span>匯出甘特圖 [Excel 檔案]
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#export_png_dialog">
+                            <span class="material-icons text-warning" style="font-size:18px;">image</span>匯出甘特圖 [PNG 圖檔]
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="sc-toolbar-group">
+            <button class="btn sc-btn sc-btn-amber" type="button" data-bs-toggle="modal" data-bs-target="#clone_version_dialog">
+                <i class="material-icons">content_copy</i>
+                <span>複製一份新的草稿</span>
+            </button>
+        </div>
+    </div>
+
+    {% if version.file and not version.cpm_release %}
+        <div class="sc-warning-banner" style="flex: 0 0 auto;">
+            <span class="material-icons" style="font-size:18px;">warning_amber</span>
+            注意：您的工項有變動紀錄且尚未重新計算，下方 CPM 圖可能不是最新版本，請開啟 CPM 網圖編輯並點選「計算並儲存」。
+        </div>
+    {% endif %}
+
+    <!-- CPM Preview Stage -->
+    <div class="sc-cpm-stage">
+        {% if version.file %}
+            <img
+                id="cpm-image"
+                src="/schedule/download_file/Version_Schedule/{{ version.id }}/?open=true&t={{ version.update_time|date:'YmdHis' }}"
+                alt="cpm photo"
+                width="100%"
+                style="width: 100%; height: 100%; object-fit: contain; display: none;"
+            >
+        {% else %}
+            <div class="sc-empty-stage">
+                <span class="material-icons">hub</span>
+                <h5 class="fw-bold text-dark mb-2">目前尚未有已完成計算之 CPM 圖表</h5>
+                <p class="text-secondary small mb-3">
+                    請點擊下方按鈕開啟 GoJS 互動式 CPM 網圖編輯器，設定各工項天數、比率與前後置連結後點選「送出雲端計算並儲存」。
+                </p>
+                <button type="button" class="btn sc-btn sc-btn-primary open_cpm">
+                    <i class="material-icons">edit</i>
+                    開啟 CPM 網圖編輯器
+                </button>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- S-Curve Overlay -->
+<div id="div_s_curve_background" style="display:none;position:fixed; top:0px;right:0px;width:100%; height: 100%; z-index:998; background-color: rgba(15, 23, 42, 0.72); backdrop-filter: blur(3px);">
+</div>
+
+<div id="div_s_curve" style="display:none;position:fixed; top:0px; width:100%; height: 100%; z-index:1000; left: 0px;">
+    <div align="center" style="height: 100%;">
+        <div class="sc-scurve-card">
+            <div class="sc-scurve-header">
+                <div class="fw-bold d-flex align-items-center gap-2 text-dark">
+                    <span class="material-icons text-primary">show_chart</span>
+                    預定進度 S 曲線圖
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn sc-btn sc-btn-primary" id="save-image-btn">
+                        <span class="material-icons">download</span>另存圖片
+                    </button>
+                    <button class="btn sc-btn btn-outline-danger" onclick="$('#div_s_curve').hide();$('#div_s_curve_background').hide();">
+                        <span class="material-icons">close</span>關閉顯示
+                    </button>
+                </div>
+            </div>
+            <div id="div_canvas" style="width:100%; flex: 1 1 auto; padding: 1rem; background-color: white;">
+                <canvas id="canvas" class="bg-white"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 匯出甘特圖 excel dialog -->
+<div class="modal fade" id="export_gantt_xlsx_dialog" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">匯出預定進度甘特圖 [Excel 檔案]</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <label class="form-label fw-semibold">匯出日期區間間隔</label>
+                <select name="data_range" class="form-select mb-4">
+                    <option value="auto" selected>自動</option>
+                    <option value="5">5 天</option>
+                    <option value="7">7 天</option>
+                    <option value="10">10 天</option>
+                    <option value="15">15 天</option>
+                    <option value="30">30 天</option>
+                </select>
+
+                <label class="form-label fw-semibold">匯出工期計算（要徑工項不影響）</label>
+                <select name="value_type" class="form-select">
+                    <option value="lslf" selected>[最晚] 完成時間（較易讓施工進度超前）</option>
+                    <option value="esef">[最早] 完成時間（較易造成施工進度落後）</option>
+                    <option value="avg">[平均] 開始時間（取最早 + 最晚平均）</option>
+                    <option value="full">[最長] 施工時間（取最早開始、最晚結束）</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+                <button id="trigger-export-gannt-excel-btn" class="btn sc-btn sc-btn-primary" type="button">匯出甘特圖 Excel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 匯出日報表 excel dialog -->
+<div class="modal fade" id="export_dailyreport_xlsx_dialog" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">匯出日報表系統匯入用 [Excel 檔案]</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <label class="form-label fw-semibold">匯出工期計算（要徑工項不影響）</label>
+                <select name="value_type" class="form-select">
+                    <option value="lslf" selected>[最晚] 完成時間（較易讓施工進度超前）</option>
+                    <option value="esef">[最早] 完成時間（較易造成施工進度落後）</option>
+                    <option value="avg">[平均] 開始時間（取最早 + 最晚平均）</option>
+                    <option value="full">[最長] 施工時間（取最早開始、最晚結束）</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+                <button id="trigger-export-dailyreport-excel-btn" class="btn sc-btn sc-btn-primary" type="button">匯出進度 Excel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 匯出 ADM dialog -->
+<div class="modal fade" id="export_adm_dialog" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">匯出轉換 ADM 箭線圖</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <label class="form-label fw-semibold">匯出工期計算（要徑工項不影響）</label>
+                <select name="value_type" class="form-select">
+                    <option value="lslf" selected>[最晚] 完成時間（較易讓施工進度超前）</option>
+                    <option value="esef">[最早] 完成時間（較易造成施工進度落後）</option>
+                    <option value="avg">[平均] 開始時間（取最早 + 最晚平均）</option>
+                    <option value="full">[最長] 施工時間（取最早開始、最晚結束）</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+                <button id="trigger-export-adm-btn" class="btn sc-btn sc-btn-primary" type="button">匯出 ADM 箭線圖</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 匯出 png dialog -->
+<div class="modal fade" id="export_png_dialog" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">匯出 [PNG 圖檔]</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <select name="report_type" class="form-select d-none">
+                    <option value="none" selected>不顯示實際進度</option>
+                </select>
+                <label class="form-label fw-semibold">匯出類型</label>
+                <select name="photo_type" class="form-select mb-3">
+                    <option value="gantt&s" selected>甘特圖 + S 曲線</option>
+                    <option value="s">僅 S 曲線</option>
+                </select>
+                <label class="form-label fw-semibold">S 曲線打點取值間隔</label>
+                <select name="data_range" class="form-select">
+                    <option value="auto" selected>自動</option>
+                    <option value="day">每天</option>
+                    <option value="week">7 天</option>
+                    <option value="two_week">15 天</option>
+                    <option value="month">30 天</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+                <button id="trigger-export-png-btn" class="btn sc-btn sc-btn-primary" type="button">匯出 PNG 圖</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 使用系統制式JSON匯入 -->
+<div class="modal fade" id="import_json_dialog" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">使用精靈專用檔 Json 匯入</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <p class="text-secondary small mb-3">匯入後將會取代此草稿目前的工項與連結設定。</p>
+                <button class="uploaderJSON btn sc-btn sc-btn-primary" id="createItemByJSON">
+                    <span class="material-icons">upload</span>請選擇欲上傳的 Json 檔案
+                </button>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 使用系統制式SCPM匯入 -->
+<div class="modal fade" id="import_scpm_dialog" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">使用精靈備份檔 SCPM 匯入</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <p class="text-secondary small mb-3">匯入精靈備份檔 (.scpm) 將會還原所有工項、座標與連結設定。</p>
+                <button class="uploaderJSON btn sc-btn sc-btn-primary" id="createItemBySCPM">
+                    <span class="material-icons">upload</span>請選擇欲上傳的 SCPM 檔案
+                </button>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 複製設定到新草稿 dialog -->
+<div class="modal fade" id="clone_version_dialog" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">複製一份新的草稿</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <label class="form-label fw-semibold">請選擇新草稿設定模式</label>
+                <select class="form-select" name="schedule_setting_type">
+                    {% if version.schedule_setting_type == 1 %}
+                        <option value="1" {% if version.schedule_setting_type == 1 %}selected{% endif %}>CPM 要徑模式</option>
+                    {% endif %}
+                    {% if version.schedule_setting_type == 1 or version.schedule_setting_type == 2 %}
+                        <option value="2" {% if version.schedule_setting_type == 2 %}selected{% endif %}>甘特圖模式</option>
+                    {% endif %}
+                    <option value="3" {% if version.schedule_setting_type == 3 %}selected{% endif %}>簡易區間模式</option>
+                </select>
+                <select class="form-select d-none" name="version">
+                    <option value="">無對應</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+                <button id="clone_to_version" class="btn sc-btn sc-btn-primary" type="button">開始複製設定到新草稿</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock body %}

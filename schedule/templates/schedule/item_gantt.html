@@ -1,0 +1,522 @@
+{% extends 'schedule/base.html' %}
+{% load humanize %}
+{% load static %}
+{% load schedule_tags %}
+{% load i18n %}
+
+{% block script %}
+    <script src="{% static 'schedule/plugin/plupload/jquery.plupload.queue/jquery.plupload.queue.js' %}"></script>
+    <script src="{% static 'schedule/plugin/plupload/js/plupload.full.js' %}"></script>
+    <script type="text/javascript" src="{% static 'schedule/plugin/Chart.js/Chart2.4.bundle.js' %}"></script>
+    <script type="text/javascript" src="{% static 'schedule/plugin/Chart.js/utils.js' %}"></script>
+    <script type="text/javascript" src="{% static 'schedule/plugin/Chart.js/FileSaver.min.js' %}"></script>
+    <script type="text/javascript" src="{% static 'schedule/js/jquery.contextmenu.r2.js' %}"></script>
+    <script type="text/javascript" src="{% static 'schedule/js/item_gantt.js' %}"></script>
+
+    <style>
+        .tooltip { min-width: 260px; }
+        .padding_0 { padding-left: 4px !important; }
+        .padding_1 { padding-left: 22px !important; }
+        .padding_2 { padding-left: 42px !important; }
+        .padding_3 { padding-left: 62px !important; }
+        .padding_4 { padding-left: 82px !important; }
+        .padding_5 { padding-left: 102px !important; }
+        .padding_6 { padding-left: 122px !important; }
+        .padding_7 { padding-left: 142px !important; }
+        .padding_8 { padding-left: 162px !important; }
+        .padding_9 { padding-left: 182px !important; }
+    </style>
+    <script>
+        var project_id = parseInt('{{ project.id|default:"0" }}');
+        {% if project %}
+            var project_name = '{{ project.name|escapejs }}'.replace('/./g', '');
+        {% else %}
+            var project_name = '{{ version.project_name|escapejs }}'.replace('/./g', '');
+        {% endif %}
+        var version_id = parseInt('{{ version.id }}');
+        var engs_price = parseFloat('{{ engs_price|default:"0" }}');
+        var schedule_setting_type = parseInt('{{ version.schedule_setting_type }}');
+    </script>
+{% endblock %}
+
+{% block body %}
+<!-- KPI Info Cards -->
+<div class="sc-kpi-grid">
+    <div class="sc-kpi-card">
+        <div class="sc-kpi-icon {% if version.schedule_setting_type == 2 %}blue{% else %}amber{% endif %}">
+            <span class="material-icons">{% if version.schedule_setting_type == 2 %}view_timeline{% else %}date_range{% endif %}</span>
+        </div>
+        <div>
+            <div class="sc-kpi-label">預定進度模式</div>
+            <div class="sc-kpi-value">
+                {% if version.schedule_setting_type == 2 %}
+                    <span class="sc-pill sc-pill-gantt">甘特圖模式</span>
+                {% elif version.schedule_setting_type == 3 %}
+                    <span class="sc-pill sc-pill-range">範圍區間模式</span>
+                {% else %}
+                    <span class="sc-pill sc-pill-cpm">進度排程模式</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="sc-kpi-card">
+        <div class="sc-kpi-icon sky"><span class="material-icons">event_available</span></div>
+        <div>
+            <div class="sc-kpi-label">此草稿目標總天數</div>
+            <div class="sc-kpi-value">
+                <span><span class="text-primary" id="version_duration">{{ version.duration }}</span> 天</span>
+                <button class="btn btn-sm sc-btn-soft py-0 px-2" style="font-size:0.78rem;border-radius:7px;" id="set_duration">設定</button>
+                {% if not version.duration %}
+                    <span class="sc-pill sc-pill-danger" id="msg_no_duration">請先設定天數</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="sc-kpi-card">
+        <div class="sc-kpi-icon emerald"><span class="material-icons">engineering</span></div>
+        <div style="min-width: 0;">
+            <div class="sc-kpi-label">對應工程案{% if engs_price %} · 契約金額{% endif %}</div>
+            <div class="sc-kpi-value" style="font-size: 0.92rem;">
+                {% if project %}
+                    <span class="text-truncate" title="{{ project.name }}">{{ project.name }}</span>
+                    <a href="{% url 'core:project_list' %}" class="text-primary" title="工程案管理"><i class="material-icons align-middle" style="font-size:17px;">open_in_browser</i></a>
+                {% else %}
+                    <span class="text-muted">無對應工程</span>
+                {% endif %}
+            </div>
+            {% if engs_price %}
+                <div class="small text-secondary">{{ engs_price|floatformat:1|intcomma|cutzero }} 元 (100%)</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Action Toolbar -->
+<div class="sc-toolbar">
+    <div class="sc-toolbar-group">
+        {% if version.schedule_setting_type == 2 %}
+            <button type="button" class="btn sc-btn sc-btn-primary open_gantt">
+                <i class="material-icons">view_timeline</i>
+                <span><span class="rwd-hide">開啟甘特圖</span>編輯</span>
+            </button>
+        {% endif %}
+
+        <div class="btn-group" role="group">
+            <button id="btnGroupDrop2" type="button" class="btn sc-btn {% if version.schedule_setting_type == 3 %}sc-btn-primary{% else %}sc-btn-soft{% endif %} dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="material-icons">{% if version.schedule_setting_type == 3 %}auto_awesome{% else %}upload_file{% endif %}</i>
+                {% if version.schedule_setting_type == 2 %}
+                    <span>匯入<span class="rwd-hide">工項</span></span>
+                {% else %}
+                    <span>產生<span class="rwd-hide">區間範圍</span></span>
+                {% endif %}
+            </button>
+            <ul class="dropdown-menu" aria-labelledby="btnGroupDrop2">
+                <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#import_excel_dialog"><span class="material-icons text-success" style="font-size:18px;">table_view</span>Excel 匯入</a></li>
+                <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#import_json_dialog"><span class="material-icons text-primary" style="font-size:18px;">data_object</span>精靈專用檔 Json 匯入</a></li>
+                {% if version.schedule_setting_type == 3 %}
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#range_create_dialog"><span class="material-icons text-warning" style="font-size:18px;">view_week</span>依固定天數自動拆段</a></li>
+                    <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#month_create_dialog"><span class="material-icons text-info" style="font-size:18px;">calendar_month</span>依起訖日期拆分月份</a></li>
+                {% endif %}
+            </ul>
+        </div>
+
+        <button type="button" class="btn sc-btn sc-btn-soft" id="draw_s_curve">
+            <i class="material-icons text-primary">show_chart</i>
+            <span><span class="rwd-hide">預定進度 </span>S 曲線</span>
+        </button>
+
+        <div class="btn-group" role="group">
+            <button id="btnGroupDrop1" type="button" class="btn sc-btn sc-btn-soft dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="material-icons text-success">file_download</i>
+                <span>匯出<span class="rwd-hide">報表與圖檔</span></span>
+            </button>
+            <ul class="dropdown-menu" aria-labelledby="btnGroupDrop1">
+                <li>
+                    <a class="dropdown-item" href="{% url 'schedule.views.make_excel_scheduleitem' version_id=version.id %}?price_type=rate">
+                        <span class="material-icons text-success" style="font-size:18px;">table_view</span>匯出此版本 Excel [比率格式] (日報表用)
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="{% url 'schedule.views.make_json_scheduleitem' version_id=version.id %}?price_type=money">
+                        <span class="material-icons text-primary" style="font-size:18px;">code</span>匯出此版本 Json [精靈專用檔]
+                    </a>
+                </li>
+                {% if version.schedule_setting_type == 2 %}
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                        <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#export_gantt_xlsx_dialog">
+                            <span class="material-icons text-success" style="font-size:18px;">view_timeline</span>匯出甘特圖 [Excel 檔案]
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#export_png_dialog">
+                            <span class="material-icons text-warning" style="font-size:18px;">image</span>匯出甘特圖 [PNG 圖檔]
+                        </a>
+                    </li>
+                {% elif version.schedule_setting_type == 3 %}
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                        <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#export_png_dialog">
+                            <span class="material-icons text-warning" style="font-size:18px;">image</span>匯出進度 S 曲線 [PNG 圖檔]
+                        </a>
+                    </li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+
+    <div class="sc-toolbar-group">
+        <button type="button" class="btn sc-btn sc-btn-soft" id="update_to_100_progress">
+            <i class="material-icons text-primary">pie_chart</i>
+            <span>進度<span class="rwd-hide">自動</span>調整<span class="rwd-hide">到 100%</span></span>
+        </button>
+        <button class="btn sc-btn sc-btn-amber" type="button" data-bs-toggle="modal" data-bs-target="#clone_version_dialog">
+            <i class="material-icons">content_copy</i>
+            <span>複製一份新的草稿</span>
+        </button>
+    </div>
+</div>
+
+<!-- Hierarchical Item Table Card -->
+<div class="sc-table-card">
+    <div class="sc-hint-bar">
+        <span class="material-icons">tips_and_updates</span>
+        <span>操作提示：在下方表格任意列點選 <strong>滑鼠右鍵</strong> 可新增目錄／工項、拖曳調整序位、縮排／凸排或刪除；修改數值後離開輸入框即自動儲存。</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover table-md" align="center" style="table-layout: fixed" id="main_table">
+            <thead class="info" id="tr-header">
+                <tr class="info">
+                    <td style="text-align: center;width:100px">
+                        <span class="align-middle">項次</span>
+                        <a class="pointer tip ms-1" onclick="window.location.reload();" data-bs-toggle="tooltip" data-bs-placement="top" title="按一下可重新整理項次">
+                            <img src="{% static 'schedule/images/renew.png' %}" style="width:15px;">
+                        </a>
+                    </td>
+                    {% if version.schedule_setting_type == 2 %}
+                    <td style="text-align: center;width:62px;position: relative;">
+                        甘特圖<br>顯示
+                        <a href="#" class="text-primary text-decoration-none" style="position: absolute;right:4px;top:2px;font-size:12px;" data-bs-toggle="tooltip" data-bs-placement="top" title="取消勾選後，匯出甘特圖將會隱藏此項，若下層不顯示則會匯出分段進度"><b>?</b></a>
+                    </td>
+                    <td style="text-align: center;width:54px;">要徑</td>
+                    {% endif %}
+                    <td style="text-align: center;width:300px">工項名稱</td>
+                    <td style="text-align: center;width:115px">工期</td>
+                    <td style="text-align: center;width:155px">預定開始</td>
+                    <td style="text-align: center;width:155px">預定結束</td>
+                    <td style="text-align: center;width:165px">花費比率 (％)</td>
+                    <td style="text-align: center;width:145px">換算價格 (元)</td>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                    {% include 'schedule/item_gantt_tr.html' %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- S-Curve Overlay -->
+<div id="div_s_curve_background" style="display:none;position:fixed; top:0px;right:0px;width:100%; height: 100%; z-index:998; background-color: rgba(15, 23, 42, 0.72); backdrop-filter: blur(3px);">
+</div>
+
+<div id="div_s_curve" style="display:none;position:fixed; top:0px; width:100%; height: 100%; z-index:1000; left: 0px;">
+    <div align="center" style="height: 100%;">
+        <div class="sc-scurve-card">
+            <div class="sc-scurve-header">
+                <div class="fw-bold d-flex align-items-center gap-2 text-dark">
+                    <span class="material-icons text-primary">show_chart</span>
+                    預定進度 S 曲線圖
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn sc-btn sc-btn-primary" id="save-image-btn">
+                        <span class="material-icons">download</span>另存圖片
+                    </button>
+                    <button class="btn sc-btn btn-outline-danger" onclick="$('#div_s_curve').hide();$('#div_s_curve_background').hide();">
+                        <span class="material-icons">close</span>關閉顯示
+                    </button>
+                </div>
+            </div>
+            <div id="div_canvas" style="width:100%; flex: 1 1 auto; padding: 1rem; background-color: white;">
+                <canvas id="canvas" class="bg-white"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 匯出甘特圖 excel dialog -->
+<div class="modal fade" id="export_gantt_xlsx_dialog" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">匯出預定進度甘特圖 [Excel 檔案]</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <label class="form-label fw-semibold">匯出日期區間間隔</label>
+                <select name="data_range" class="form-select">
+                    <option value="auto" selected>自動</option>
+                    <option value="5">5 天</option>
+                    <option value="7">7 天</option>
+                    <option value="10">10 天</option>
+                    <option value="15">15 天</option>
+                    <option value="30">30 天</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+                <button id="trigger-export-gannt-excel-btn" class="btn sc-btn sc-btn-primary" type="button">匯出甘特圖 Excel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 匯出 png dialog -->
+<div class="modal fade" id="export_png_dialog" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">匯出 [PNG 圖檔]</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <label class="form-label fw-semibold">匯出類型</label>
+                <select name="photo_type" class="form-select mb-3">
+                    {% if version.schedule_setting_type == 2 %}
+                    <option value="gantt&s" selected>甘特圖 + S 曲線</option>
+                    {% endif %}
+                    <option value="s">僅 S 曲線</option>
+                </select>
+                <label class="form-label fw-semibold">S 曲線打點取值間隔</label>
+                <select name="data_range" class="form-select">
+                    <option value="auto" selected>自動</option>
+                    <option value="day">每天</option>
+                    <option value="week">7 天</option>
+                    <option value="two_week">15 天</option>
+                    <option value="month">30 天</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+                <button id="trigger-export-png-btn" class="btn sc-btn sc-btn-primary" type="button">匯出 PNG 圖</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 使用系統制式EXCEL匯入 -->
+<div class="modal fade" id="import_excel_dialog" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">使用系統制式 EXCEL 匯入</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="alert alert-light border small mb-3">
+                    匯入系統制式 Excel 檔案將會<strong>全部取代目前工項設定</strong>。
+                </div>
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <span class="fw-semibold small">1. 下載 Excel 制式範例檔案（含說明）</span>
+                    <button class="btn sc-btn sc-btn-amber py-1 px-2" onclick="window.location=STATIC_PATH + 'schedule/document/sch_example_expert.xlsx'">下載格式範例</button>
+                </div>
+                <div class="d-flex align-items-center justify-content-between">
+                    <span class="fw-semibold small">2. 上傳編輯完成之 Excel 檔案</span>
+                    <button class="uploaderEXCEL btn sc-btn sc-btn-primary py-1 px-3" id="createItemByEXCEL">選擇 Excel 檔案</button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 使用系統制式JSON匯入 -->
+<div class="modal fade" id="import_json_dialog" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">使用精靈專用 Json 檔匯入</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <p class="text-secondary small mb-3">上傳精靈專用檔 (.json / .scpm) 將取代目前設定。</p>
+                <button class="uploaderJSON btn sc-btn sc-btn-primary" id="createItemByJSON">
+                    <span class="material-icons">upload</span>請選擇欲上傳的 Json 檔案
+                </button>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 轉換排序的dialog -->
+<div class="modal fade" id="update_priority_dialog" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">工項拖曳排序</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="alert alert-info py-2 small mb-3">
+                    請以滑鼠上下拖曳表格列以重新編排同階層工項順序，完成後按下「確定更新排序」。
+                </div>
+                <input type="hidden" value="" id="update_priority_start">
+                <table class="table table-bordered table-hover" id="table_update_priority_list" style="table-layout: fixed">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="align_center" width="70px">序位</th>
+                            <th class="align_center" width="120px">原項次</th>
+                            <th class="align_center">工項名稱</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+                {% verbatim %}
+                <script type="text/x-jquery-tmpl" id="HidePriorityTr">
+                    <tr class="tr_priority pointer" row_id="${id}">
+                        <td class="sort align_center fw-bold text-primary">${sort}</td>
+                        <td class="align_center">${symbol}</td>
+                        <td>${name}</td>
+                    </tr>
+                </script>
+                {% endverbatim %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn sc-btn sc-btn-primary" id="change_item_priority">確定更新排序</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 依照月份新增工項的dialog -->
+<div class="modal fade" id="month_create_dialog" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">設定起訖日期，自動拆分月份</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <label class="form-label fw-semibold">開始日期</label>
+                <input type="text" class="datepicker form-control mb-3" value="" name="start_date" placeholder="開始日期 (YYYY-MM-DD)">
+                <label class="form-label fw-semibold">結束日期</label>
+                <input type="text" class="datepicker form-control mb-3" value="" name="end_date" placeholder="結束日期 (YYYY-MM-DD)">
+                <div class="alert alert-danger small mb-0">
+                    <strong>注意：</strong>按下確定新增後，將會取代目前現有項目設定。
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn sc-btn sc-btn-primary" id="create_item_by_month">確定新增工項</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 總天數，自動拆分新增工項的dialog -->
+<div class="modal fade" id="range_create_dialog" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">設定總天數，自動拆分固定天數</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <label class="form-label fw-semibold">總工期（天）</label>
+                <input type="text" class="form-control mb-3" value="{{ version.duration }}" name="duration" placeholder="總工期">
+                <label class="form-label fw-semibold">間隔天數（天）</label>
+                <input type="text" class="form-control mb-3" value="30" name="scale" placeholder="間隔天數">
+                <div class="alert alert-danger small mb-0">
+                    <strong>注意：</strong>按下確定新增後，將會取代目前現有項目設定。
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn sc-btn sc-btn-primary" id="create_item_by_range">確定新增工項</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 複製設定到新草稿 dialog -->
+<div class="modal fade" id="clone_version_dialog" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">複製一份新的草稿</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <label class="form-label fw-semibold">請選擇新草稿設定模式</label>
+                <select class="form-select" name="schedule_setting_type">
+                    {% if version.schedule_setting_type == 1 %}
+                        <option value="1" {% if version.schedule_setting_type == 1 %}selected{% endif %}>CPM 要徑模式</option>
+                    {% endif %}
+                    {% if version.schedule_setting_type == 1 or version.schedule_setting_type == 2 %}
+                        <option value="2" {% if version.schedule_setting_type == 2 %}selected{% endif %}>甘特圖模式</option>
+                    {% endif %}
+                    <option value="3" {% if version.schedule_setting_type == 3 %}selected{% endif %}>簡易區間模式</option>
+                </select>
+                <select class="form-select d-none" name="version">
+                    <option value="">無對應</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+                <button id="clone_to_version" class="btn sc-btn sc-btn-primary" type="button">開始複製設定到新草稿</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 右鍵選單內容 -->
+<div class="contextMenu" id="reset_right_menu" row_id="" table_name="scheduleitem" kind="" style="display:none">
+    <ul>
+        <li id="create_same_dir" title="可以新增一個與我同一階層的資料夾">
+            <img src="{% static 'schedule/images/dir_add.png' %}" width="20">
+            新增『同層』資料夾
+        </li>
+        <li id="create_sub_dir" title="可以新增一個在我之下的資料夾">
+            <img src="{% static 'schedule/images/dir_add_sub.png' %}" width="20">
+            新增『下層』資料夾
+        </li>
+        <li id="create_item" title="可以新增一個工作項目">
+            <img src="{% static 'schedule/images/item_add.png' %}" width="20">
+            新增工項
+        </li>
+        <li id="update_priority" title="調整工項序位">
+            <img src="{% static 'schedule/images/move.png' %}" width="20">
+            工項移動序位
+        </li>
+        <li id="update_priority_outdent" title="向前凸排，若為資料夾則會連動所有項目">
+            <img src="{% static 'schedule/images/outdent.png' %}" width="20">
+            到前一層（向前凸排）
+        </li>
+        <li id="update_priority_indent" title="向後縮排，若為資料夾則會連動所有項目">
+            <img src="{% static 'schedule/images/indent.png' %}" width="20">
+            到後一層（向後縮排）
+        </li>
+        <li id="delete_item" title="刪除這個項目，若為資料夾，則所屬項目會一併刪除">
+            <img src="{% static 'schedule/images/delete.png' %}" width="20">
+            刪除此項目
+        </li>
+        <li id="delete_all_item" title="刪除全部的工項">
+            <img src="{% static 'schedule/images/delete.png' %}" width="20">
+            刪除所有項目
+        </li>
+    </ul>
+</div>
+
+<div id="nothing"></div>
+{% endblock body %}

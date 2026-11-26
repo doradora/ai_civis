@@ -1,6 +1,6 @@
 function search(){
     var $obj = $('#search');
-    var string = 'order_by=-create_time';
+    var string = 'order_by=-create_time&tree=1';
     var p__name__icontains = $('.search-form').find('.search-name-input[name="p__name__icontains"]').val();
     if(p__name__icontains){
         string += '&p__name__icontains=' + p__name__icontains;
@@ -201,11 +201,11 @@ function delete_version(){
                         XHR.setRequestHeader('X-CSRFToken', CSRFMIDDLEWARETOKEN);
                     },
                     success: function (json, text, xhr) {
-                        $('#tr_' + row_id).remove();
                         Lobibox.notify('success', {
                             title: '系統訊息',
                             msg: '版本已刪除',
                         });
+                        search();
                     },
                     error: function (json) {
                         Lobibox.notify('error', {
@@ -224,6 +224,44 @@ $(document).ready(function(){
 
     $('#create_version').click(create_version);
     $(document).on('click', '.delete_version', delete_version);
+    $(document).on('click', '.js-delete-sub-version', function(){
+        var subId = $(this).data('sub-id');
+        var subName = $(this).data('sub-name') || '此分項子網圖';
+        Lobibox.confirm({
+            title: '刪除分項子網圖確認',
+            msg: '是否確認要刪除分項子網圖「<strong>' + $('<div>').text(subName).html() + '</strong>」？刪除後將無法恢復！',
+            buttons: {
+                accept: { 'class': 'lobibox-btn lobibox-btn-yes', text: '確認刪除', closeOnClick: true },
+                cancel: { 'class': 'lobibox-btn lobibox-btn-no', text: '取消', closeOnClick: true }
+            },
+            callback: function ($this, type) {
+                if(type !== 'accept') return;
+                $.ajax({
+                    url: '/schedule/api/active/version_schedule/' + subId + '/',
+                    type: 'DELETE',
+                    contentType: 'application/json',
+                    dataType: 'json',
+                    beforeSend: function(XHR) {
+                        XHR.setRequestHeader('X-CSRFToken', CSRFMIDDLEWARETOKEN);
+                    },
+                    success: function () {
+                        Lobibox.notify('success', { title: '系統訊息', msg: '分項子網圖已刪除' });
+                        search();
+                    },
+                    error: function (xhr) {
+                        Lobibox.notify('error', { title: '錯誤訊息', msg: xhr.responseText || '刪除失敗' });
+                    }
+                });
+            }
+        });
+    });
+    $(document).on('click', '.js-toggle-sub-tree', function(){
+        var target = $(this).data('target');
+        var $panel = $(target);
+        $panel.slideToggle(160);
+        var $ico = $(this).find('.js-tree-chevron');
+        $ico.text($ico.text() === 'expand_less' ? 'expand_more' : 'expand_less');
+    });
 
     $("#pageChooseSelect").change(function(){
         $('#search').trigger('click');

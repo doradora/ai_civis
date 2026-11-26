@@ -1668,6 +1668,18 @@ html, body {
     border: 1px solid #86efac;
 }
 
+.sc-lock-badge.is-step2 {
+    background: #e0f2fe;
+    color: #0369a1;
+    border: 1px solid #7dd3fc;
+}
+
+.sc-gantt-notice.is-locked-readonly {
+    background: #ecfdf5 !important;
+    border-bottom-color: #a7f3d0 !important;
+    color: #065f46 !important;
+}
+
 .sc-lock-badge.is-unlocked {
     background: #fffbeb;
     color: #b45309;
@@ -2009,4 +2021,635 @@ html, body {
 
 .sc-step-arrow.is-unlocked {
     color: #16a34a;
+}
+
+/* ==========================================================================
+   Step 3: Composite Progress Result Studio (ADM / Gantt / PDM + S-Curve)
+   ========================================================================== */
+.sc-result-studio {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #ffffff;
+}
+
+.sc-result-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    padding: 0.55rem 1.15rem;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--sc-slate-200);
+}
+
+.sc-result-bar-left,
+.sc-result-bar-right {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+}
+
+.sc-result-label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--sc-navy-700);
+    white-space: nowrap;
+}
+
+.sc-result-base-picker .sc-mini-seg-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    padding: 0.26rem 0.72rem;
+}
+
+.sc-result-base-picker .sc-mini-seg-btn .material-icons {
+    font-size: 15px;
+}
+
+.sc-result-base-picker .sc-mini-seg-btn.active {
+    color: #1d4ed8;
+}
+
+.sc-result-vsep {
+    width: 1px;
+    height: 20px;
+    background: var(--sc-slate-300);
+    margin: 0 0.15rem;
+}
+
+.sc-result-scurve-opts {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    padding: 0.2rem 0.65rem;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+}
+
+.sc-result-chk {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin: 0;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--sc-navy-700);
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.sc-result-chk input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    accent-color: #2563eb;
+    cursor: pointer;
+}
+
+.sc-result-subbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.85rem;
+    padding: 0.45rem 1.15rem;
+    background: #ffffff;
+    border-bottom: 1px solid var(--sc-slate-200);
+}
+
+.sc-result-ctrl-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.sc-result-ctrl-lbl {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--sc-slate-600);
+    margin: 0;
+    white-space: nowrap;
+}
+
+.sc-result-select {
+    width: auto !important;
+    border-radius: 7px !important;
+    font-size: 0.78rem !important;
+    font-weight: 600 !important;
+    padding-top: 0.18rem !important;
+    padding-bottom: 0.18rem !important;
+}
+
+.sc-result-range {
+    width: 96px;
+    accent-color: #2563eb;
+    cursor: pointer;
+}
+
+.sc-result-val {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #1d4ed8;
+    min-width: 34px;
+}
+
+/* Detailed Settings Floating Popover in Step 3 Result Studio */
+.sc-result-detail-anchor,
+.sc-result-detail-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.sc-result-detail-btn {
+    gap: 0.35rem;
+}
+
+.sc-result-detail-btn.is-open {
+    background: #eff6ff;
+    border-color: #60a5fa;
+    color: #1d4ed8;
+}
+
+.sc-result-detail-badge {
+    display: inline-block;
+    padding: 0.06rem 0.42rem;
+    border-radius: 999px;
+    background: #dbeafe;
+    color: #1e40af;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.sc-result-detail-popover {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    z-index: 60;
+    width: 410px;
+    max-width: calc(100vw - 32px);
+    background: #ffffff;
+    border: 1px solid var(--sc-slate-200);
+    border-radius: 14px;
+    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(15, 23, 42, 0.08);
+    overflow: hidden;
+}
+
+.sc-result-detail-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.65rem 1rem;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--sc-slate-200);
+    font-size: 0.88rem;
+}
+
+.sc-result-detail-body {
+    padding: 0.85rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.sc-result-detail-sec {
+    background: #f8fafc;
+    border: 1px solid var(--sc-slate-200);
+    border-radius: 10px;
+    padding: 0.7rem 0.85rem;
+}
+
+.sc-result-detail-sec-title {
+    font-size: 0.76rem;
+    font-weight: 800;
+    color: #1e40af;
+    letter-spacing: 0.02em;
+    margin-bottom: 0.55rem;
+}
+
+.sc-result-detail-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.sc-result-detail-hint {
+    margin-top: 0.45rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: 7px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    font-size: 0.74rem;
+    line-height: 1.5;
+    color: #1e3a8a;
+}
+
+.sc-result-detail-checks {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem 0.6rem;
+}
+
+/* ==========================================================================
+   WBS Parent-Child Sub-Schedules & Multi-Version Chain UI
+   ========================================================================== */
+.sc-version-pill-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.16rem 0.52rem;
+    border-radius: 999px;
+    border: 1px solid var(--sc-slate-300);
+    background: #f8fafc;
+    color: var(--sc-navy-800);
+    font-size: 0.74rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.sc-version-pill-btn:hover {
+    background: #eff6ff;
+    border-color: #60a5fa;
+    color: #1d4ed8;
+}
+
+.sc-wbs-breadcrumb {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    padding: 0.42rem 1.15rem;
+    background: linear-gradient(90deg, #eff6ff 0%, #f8fafc 100%);
+    border-bottom: 1px solid #bfdbfe;
+    font-size: 0.8rem;
+}
+
+.sc-wbs-crumb-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    color: #1d4ed8;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.sc-wbs-crumb-link:hover {
+    text-decoration: underline;
+}
+
+.sc-wbs-crumb-node {
+    font-weight: 700;
+    color: var(--sc-navy-900);
+}
+
+.sc-overrun-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    background: #fff1f2;
+    border: 1px solid #fda4af;
+    color: #be123c;
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+.sc-wbs-parent-card {
+    padding: 0.75rem 1rem;
+    border-radius: 10px;
+    background: #f8fafc;
+    border: 1px solid var(--sc-slate-200);
+}
+
+.sc-sub-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.sc-sub-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    padding: 0.65rem 0.85rem;
+    border-radius: 10px;
+    border: 1px solid var(--sc-slate-200);
+    background: #ffffff;
+}
+
+.sc-wbs-create-box {
+    padding: 0.85rem 1rem;
+    border-radius: 10px;
+    background: #f0f9ff;
+    border: 1px dashed #7dd3fc;
+}
+
+.sc-tree-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.12rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid #bfdbfe;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+.sc-tree-toggle-btn:hover {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.sc-tree-ver-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1rem 0.5rem;
+    border-radius: 6px;
+    background: #f1f5f9;
+    border: 1px solid var(--sc-slate-200);
+    color: var(--sc-navy-700);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.sc-tree-ver-chip:hover {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+}
+
+.sc-tree-children {
+    margin-top: 0.75rem;
+    padding-top: 0.65rem;
+    border-top: 1px dashed var(--sc-slate-200);
+    padding-left: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.sc-tree-child-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.48rem 0.75rem;
+    border-radius: 8px;
+    background: #f8fafc;
+    border: 1px solid var(--sc-slate-200);
+}
+
+/* ==========================================================================
+   Step 0: Interactive Multi-Level WBS Tree Planner
+   ========================================================================== */
+.sc-wbs-panel {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #f8fafc;
+}
+
+.sc-wbs-toolbar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.6rem 1rem;
+    padding: 0.65rem 1.25rem;
+    background: #ffffff;
+    border-bottom: 1px solid var(--sc-slate-200);
+}
+
+.sc-wbs-body {
+    flex: 1 1 auto;
+    overflow: auto;
+    padding: 1rem 1.25rem 2rem;
+}
+
+.sc-wbs-table-wrap {
+    background: #ffffff;
+    border: 1px solid var(--sc-slate-200);
+    border-radius: 12px;
+    box-shadow: var(--sc-shadow-sm);
+    overflow: hidden;
+}
+
+.sc-wbs-table thead th {
+    background: #f1f5f9;
+    color: var(--sc-navy-800);
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 0.58rem 0.75rem;
+    border-bottom: 1px solid var(--sc-slate-200);
+    white-space: nowrap;
+}
+
+.sc-wbs-level-row td {
+    background: linear-gradient(90deg, #eff6ff 0%, #f8fafc 100%);
+    border-top: 1px solid #bfdbfe;
+    border-bottom: 1px solid #dbeafe;
+    padding-top: 0.52rem;
+    padding-bottom: 0.52rem;
+}
+
+.sc-wbs-level-row.depth-1 td {
+    background: linear-gradient(90deg, #f0fdfa 0%, #f8fafc 100%);
+    border-top-color: #99f6e4;
+    border-bottom-color: #ccfbf1;
+}
+
+.sc-wbs-level-row.depth-2 td {
+    background: linear-gradient(90deg, #fefce8 0%, #f8fafc 100%);
+    border-top-color: #fde68a;
+    border-bottom-color: #fef3c7;
+}
+
+.sc-wbs-item-row td {
+    padding-top: 0.36rem;
+    padding-bottom: 0.36rem;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+
+.sc-wbs-item-row:hover td {
+    background-color: #f8fafc;
+}
+
+.sc-wbs-item-row.is-dirty td {
+    background-color: #fffbeb;
+}
+
+.sc-wbs-code {
+    display: inline-block;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #1e40af;
+    background: #eff6ff;
+    border: 1px solid #dbeafe;
+    border-radius: 6px;
+    padding: 0.1rem 0.42rem;
+    min-width: 32px;
+    text-align: center;
+}
+
+.sc-wbs-expand-btn {
+    border: none;
+    background: transparent;
+    color: var(--sc-navy-700);
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.sc-wbs-expand-btn:hover {
+    background: #e2e8f0;
+}
+
+.sc-wbs-expand-btn .material-icons {
+    font-size: 17px;
+}
+
+.sc-wbs-expand-placeholder {
+    display: inline-block;
+    width: 22px;
+    height: 22px;
+}
+
+.sc-wbs-input {
+    border-radius: 7px !important;
+    font-size: 0.84rem !important;
+    font-weight: 600;
+    border-color: transparent !important;
+    background-color: transparent !important;
+    padding-left: 0.45rem !important;
+    padding-right: 0.45rem !important;
+}
+
+.sc-wbs-input:hover:not(:disabled),
+.sc-wbs-input:focus:not(:disabled) {
+    border-color: #93c5fd !important;
+    background-color: #ffffff !important;
+}
+
+.sc-wbs-num {
+    border-radius: 7px !important;
+    font-size: 0.82rem !important;
+    font-weight: 700;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.sc-wbs-sub-link {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #0369a1;
+    background: #e0f2fe;
+    border: 1px solid #bae6fd;
+    border-radius: 999px;
+    padding: 0.14rem 0.55rem;
+    text-decoration: none;
+}
+
+.sc-wbs-sub-link:hover {
+    background: #bae6fd;
+    color: #0c4a6e;
+}
+
+.sc-wbs-item-row.is-critical td:first-child .sc-wbs-code {
+    background: #fff1f2;
+    border-color: #fecdd3;
+    color: #be123c;
+}
+
+.sc-wbs-cp-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 1.5px solid #cbd5e1;
+    background: #ffffff;
+}
+
+.sc-wbs-cp-badge.is-cp {
+    border-color: #dc2626;
+    background: #dc2626;
+    color: #ffffff;
+}
+
+.sc-wbs-cp-badge.is-cp .material-icons {
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.sc-wbs-unit-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    width: 100%;
+}
+
+.sc-wbs-unit {
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--sc-slate-500);
+    flex-shrink: 0;
+}
+
+.sc-wbs-day-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.14rem 0.5rem;
+    border-radius: 6px;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    color: var(--sc-navy-800);
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.sc-wbs-day-pending {
+    font-size: 0.74rem;
+    color: #94a3b8;
+    font-style: italic;
+}
+
+.sc-wbs-money {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--sc-navy-800);
+    font-variant-numeric: tabular-nums;
 }

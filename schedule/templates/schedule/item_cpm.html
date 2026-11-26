@@ -12,6 +12,8 @@
     <script type="text/javascript" src="{% static 'schedule/plugin/Chart.js/FileSaver.min.js' %}"></script>
     <script type="text/javascript" src="{% static 'schedule/js/jquery.contextmenu.r2.js' %}"></script>
     <script type="text/javascript" src="{% static 'schedule/js/item_gantt.js' %}"></script>
+    <script type="text/javascript" src="{% static 'schedule/js/result_studio.js' %}"></script>
+    <script type="text/javascript" src="{% static 'schedule/js/wbs_planner.js' %}"></script>
 
     <style>
         .tooltip { min-width: 260px; }
@@ -27,6 +29,7 @@
         var engs_price = parseFloat('{{ engs_price|default:"0" }}');
         var schedule_setting_type = parseInt('{{ version.schedule_setting_type }}');
         var IS_CPM_LOCKED = {% if version.cpm_locked %}true{% else %}false{% endif %};
+        var IS_GANTT_LOCKED = {% if version.cpm_locked and version.gantt_locked %}true{% else %}false{% endif %};
         var CPM_LOCK_CHECKLIST = {{ cpm_lock_checklist_json|safe }};
         var CPM_NODES_DATA = {{ cpm_nodes_json|safe }};
         var CPM_LINKS_DATA = {{ cpm_links_json|safe }};
@@ -41,12 +44,49 @@
             <span class="material-icons">arrow_back</span>
         </a>
         <span id="version_project_name" class="sc-project-title" title="{{ version.project_name }}">{{ version.project_name }}</span>
-        {% if version.cpm_locked %}
-            <span class="sc-lock-badge is-locked" id="cpm-lock-status-badge" title="CPM 網圖已鎖定為基準，甘特圖已開放使用">
-                <span class="material-icons">lock</span>CPM 已鎖定
+        <!-- Multi-Version Family Switcher (jsrcm compatible v1/v2/v3...) -->
+        <div class="btn-group" role="group">
+            <button
+                type="button"
+                class="sc-version-pill-btn dropdown-toggle"
+                id="version-family-dropdown"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+                title="切換此預定進度之不同版本，或複製建立新版本"
+            >
+                v{{ current_version_number }}
+            </button>
+            <ul class="dropdown-menu sc-clean-dropdown" aria-labelledby="version-family-dropdown" style="min-width:250px;">
+                <li class="dropdown-header small fw-bold text-secondary">版本歷程（共 {{ version_family|length }} 版）</li>
+                {% for vf in version_family %}
+                <li>
+                    <a class="dropdown-item d-flex align-items-center justify-content-between gap-2 {% if vf.is_current %}active fw-bold{% endif %}" href="/schedule/item_profile/{{ vf.id }}/">
+                        <span>v{{ vf.number }}{% if vf.is_latest %} <span class="badge bg-primary-subtle text-primary" style="font-size:0.65rem;">最新</span>{% endif %} · {{ vf.duration }}天</span>
+                        <span class="badge rounded-pill {% if vf.stage.code == 'done' %}bg-success-subtle text-success{% elif vf.stage.code == 'step2' %}bg-primary-subtle text-primary{% else %}bg-warning-subtle text-warning-emphasis{% endif %}" style="font-size:0.68rem;">
+                            {{ vf.stage.label }}
+                        </span>
+                    </a>
+                </li>
+                {% endfor %}
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <a class="dropdown-item text-primary fw-semibold" href="#" id="btn-create-next-version">
+                        <span class="material-icons" style="font-size:16px;">add_circle_outline</span>
+                        以此建立新版本（v{{ version_family|length|add:"1" }}）
+                    </a>
+                </li>
+            </ul>
+        </div>
+        {% if version.cpm_locked and version.gantt_locked %}
+            <span class="sc-lock-badge is-locked" id="cpm-lock-status-badge" title="步驟 1 網圖與步驟 2 進度調整皆已鎖定定案，可輸出步驟 3 進度成果">
+                <span class="material-icons">verified</span>進度已定案
+            </span>
+        {% elif version.cpm_locked %}
+            <span class="sc-lock-badge is-step2" id="cpm-lock-status-badge" title="步驟 1 邏輯網圖已鎖定，目前可於步驟 2 調整進度並鎖定以產出成果">
+                <span class="material-icons">lock</span>網圖已鎖定
             </span>
         {% else %}
-            <span class="sc-lock-badge is-unlocked" id="cpm-lock-status-badge" title="CPM 尚未鎖定，鎖定後才可使用甘特圖">
+            <span class="sc-lock-badge is-unlocked" id="cpm-lock-status-badge" title="步驟 1 邏輯網圖尚未鎖定，鎖定後才可進入步驟 2 進度調整">
                 <span class="material-icons">lock_open</span>草稿（未鎖定）
             </span>
         {% endif %}
@@ -55,9 +95,26 @@
         </button>
     </div>
 
-    <!-- Center: Progressive 3-Step Engineering Stepper -->
+    <!-- Center: Progressive Engineering Stepper (0. WBS -> 1. CPM -> 2. Gantt -> 3. Result) -->
     <div class="sc-topbar-center">
         <nav class="sc-stepper" role="tablist" aria-label="預定進度作業步驟">
+            <button
+                type="button"
+                class="sc-step-item"
+                id="tab-wbs"
+                data-view="wbs"
+                role="tab"
+                aria-selected="false"
+                title="步驟 0：以 WBS 階層表規劃母子工項、工期與權重（支援 JSON 匯入匯出）"
+            >
+                <span class="sc-step-num">0</span>
+                <span class="sc-step-label">WBS 架構</span>
+            </button>
+
+            <span class="sc-step-arrow is-unlocked" aria-hidden="true">
+                <span class="material-icons">chevron_right</span>
+            </span>
+
             <button
                 type="button"
                 class="sc-step-item active {% if version.cpm_locked %}is-done{% endif %}"
@@ -83,36 +140,42 @@
 
             <button
                 type="button"
-                class="sc-step-item {% if not version.cpm_locked %}is-locked{% endif %}"
+                class="sc-step-item {% if not version.cpm_locked %}is-locked{% elif version.gantt_locked %}is-done{% endif %}"
                 id="tab-gantt"
                 data-view="gantt"
                 role="tab"
                 aria-selected="false"
-                title="{% if version.cpm_locked %}步驟 2：於 [ES, LF] 區間調整甘特圖並檢視 ADM 箭線圖{% else %}需先完成並鎖定步驟 1「邏輯網圖」{% endif %}"
+                title="{% if version.cpm_locked and version.gantt_locked %}步驟 2：進度調整已鎖定定案（唯讀檢視）{% elif version.cpm_locked %}步驟 2：於 [ES, LF] 區間調整甘特圖排程，完成後鎖定以產出成果{% else %}需先完成並鎖定步驟 1「邏輯網圖」{% endif %}"
             >
-                <span class="sc-step-num">2</span>
+                <span class="sc-step-num">
+                    {% if version.cpm_locked and version.gantt_locked %}
+                        <span class="material-icons">check</span>
+                    {% else %}
+                        2
+                    {% endif %}
+                </span>
                 <span class="sc-step-label">進度調整</span>
                 {% if not version.cpm_locked %}
                     <span class="material-icons sc-step-lock">lock</span>
                 {% endif %}
             </button>
 
-            <span class="sc-step-arrow {% if version.cpm_locked %}is-unlocked{% endif %}" aria-hidden="true">
+            <span class="sc-step-arrow {% if version.cpm_locked and version.gantt_locked %}is-unlocked{% endif %}" aria-hidden="true">
                 <span class="material-icons">chevron_right</span>
             </span>
 
             <button
                 type="button"
-                class="sc-step-item {% if not version.cpm_locked %}is-locked{% endif %}"
+                class="sc-step-item {% if not version.cpm_locked or not version.gantt_locked %}is-locked{% endif %}"
                 id="draw_s_curve"
                 data-view="scurve"
                 role="tab"
                 aria-selected="false"
-                title="{% if version.cpm_locked %}步驟 3：檢視並匯出定案預定進度 S 曲線成果{% else %}需先完成並鎖定步驟 1「邏輯網圖」{% endif %}"
+                title="{% if version.cpm_locked and version.gantt_locked %}步驟 3：選擇底圖（ADM / 甘特圖 / PDM）、疊加 S 曲線並調整輸出進度成果{% elif version.cpm_locked %}需先完成並鎖定步驟 2「進度調整」{% else %}需先依序鎖定步驟 1「邏輯網圖」與步驟 2「進度調整」{% endif %}"
             >
                 <span class="sc-step-num">3</span>
                 <span class="sc-step-label">進度成果</span>
-                {% if not version.cpm_locked %}
+                {% if not version.cpm_locked or not version.gantt_locked %}
                     <span class="material-icons sc-step-lock">lock</span>
                 {% endif %}
             </button>
@@ -133,6 +196,12 @@
                 <span>匯入</span>
             </button>
             <ul class="dropdown-menu dropdown-menu-end sc-clean-dropdown" aria-labelledby="btnGroupDrop2">
+                <li>
+                    <a class="dropdown-item fw-semibold text-primary" href="#" data-bs-toggle="modal" data-bs-target="#wbs_import_json_modal">
+                        <span class="material-icons text-primary">account_tree</span>匯入 WBS 階層 JSON（貼上／上傳）
+                    </a>
+                </li>
+                <li><hr class="dropdown-divider"></li>
                 <li>
                     <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#import_json_dialog">
                         <span class="material-icons text-primary">data_object</span>精靈專用檔 Json 匯入
@@ -172,6 +241,16 @@
                         <span class="material-icons text-info">backup</span>匯出此版本 SCPM [精靈備份檔]
                     </a>
                 </li>
+                <li>
+                    <a class="dropdown-item" href="{% url 'schedule.views.make_json_scheduleitem' version_id=version.id %}?price_type=rate&include_sub=1">
+                        <span class="material-icons text-primary">account_tree</span>匯出完整 WBS 母子專案 (JSON 2.0)
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="{% url 'schedule.views.make_json_scheduleitem' version_id=version.id %}?format=wbs_template">
+                        <span class="material-icons text-success">description</span>匯出精簡 WBS 架構範本 (JSON)
+                    </a>
+                </li>
                 <li><hr class="dropdown-divider"></li>
                 <li>
                     <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#export_gantt_xlsx_dialog">
@@ -204,6 +283,14 @@
                 </li>
                 {% endif %}
                 <li><hr class="dropdown-divider"></li>
+                {% if version.parent_item_id %}
+                <li>
+                    <a class="dropdown-item text-danger fw-semibold" href="#" id="btn-delete-current-sub" data-parent-ver-id="{{ version.parent_item.version_id }}">
+                        <span class="material-icons text-danger">delete_outline</span>刪除此分項子網圖
+                    </a>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                {% endif %}
                 <li>
                     <a class="dropdown-item" href="{% url 'core:dashboard' %}">
                         <span class="material-icons text-secondary">dashboard</span>返回系統總覽
@@ -212,15 +299,28 @@
             </ul>
         </div>
 
-        {% if version.cpm_locked %}
+        {% if version.cpm_locked and version.gantt_locked %}
+            <button type="button" class="btn sc-btn-outline-clean sc-btn-unlock" id="btn-unlock-gantt" data-bs-toggle="modal" data-bs-target="#gantt_unlock_confirm_modal">
+                <span class="material-icons" style="font-size:17px;">lock_open</span>
+                <span>解除鎖定進度調整</span>
+            </button>
+            <button type="button" class="btn sc-btn-outline-clean" id="btn-unlock-cpm" data-bs-toggle="modal" data-bs-target="#cpm_unlock_confirm_modal" title="退回步驟 1 解除邏輯網圖鎖定">
+                <span class="material-icons" style="font-size:16px;">hub</span>
+                <span>解鎖網圖</span>
+            </button>
+        {% elif version.cpm_locked %}
             <button type="button" class="btn sc-btn-outline-clean sc-btn-unlock" id="btn-unlock-cpm" data-bs-toggle="modal" data-bs-target="#cpm_unlock_confirm_modal">
                 <span class="material-icons" style="font-size:17px;">lock_open</span>
-                <span>解除鎖定 CPM</span>
+                <span>解除鎖定網圖</span>
+            </button>
+            <button type="button" class="btn sc-btn sc-btn-lock" id="btn-lock-gantt" data-bs-toggle="modal" data-bs-target="#gantt_lock_confirm_modal">
+                <span class="material-icons">lock</span>
+                <span>鎖定進度調整</span>
             </button>
         {% else %}
             <button type="button" class="btn sc-btn sc-btn-lock" id="btn-lock-cpm" data-bs-toggle="modal" data-bs-target="#cpm_lock_confirm_modal">
                 <span class="material-icons">lock</span>
-                <span>鎖定 CPM</span>
+                <span>鎖定邏輯網圖</span>
             </button>
             <button type="button" class="btn sc-btn sc-btn-primary" id="btn-toggle-editor">
                 <span class="material-icons" id="btn-toggle-editor-icon">hub</span>
@@ -235,6 +335,39 @@
 
 {% block body %}
 <div class="d-flex flex-column" style="width: 100%; height: 100%;">
+    {% if wbs_ancestors %}
+    <!-- WBS Parent-Child Breadcrumb Strip -->
+    <div class="sc-wbs-breadcrumb" id="wbs-breadcrumb-bar" style="flex: 0 0 auto;">
+        <div class="d-flex align-items-center flex-wrap gap-1">
+            <span class="badge rounded-pill bg-primary-subtle text-primary border border-primary-subtle me-1">WBS 分項網圖</span>
+            {% for anc in wbs_ancestors %}
+                <a href="/schedule/item_profile/{{ anc.version_id }}/" class="sc-wbs-crumb-link" title="返回上層預定進度">
+                    <span class="material-icons" style="font-size:14px;">account_tree</span>
+                    {{ anc.version_name }} (v{{ anc.version_number }})
+                </a>
+                <span class="material-icons text-muted" style="font-size:15px;">chevron_right</span>
+                <span class="sc-wbs-crumb-node">{{ anc.item_name }}</span>
+                {% if not forloop.last %}
+                    <span class="material-icons text-muted" style="font-size:15px;">chevron_right</span>
+                {% endif %}
+            {% endfor %}
+        </div>
+        {% with parent_ref=wbs_ancestors|last %}
+        <div class="d-flex align-items-center flex-wrap gap-2 small">
+            <span class="text-secondary">
+                母節點控管：工期 <strong>{{ parent_ref.item_duration }}</strong> 天 ｜ 權重 <strong>{{ parent_ref.item_weight|floatformat:2 }}%</strong> ｜ 母排程 第 {{ parent_ref.item_es }}～{{ parent_ref.item_ef }} 天
+            </span>
+            {% if parent_overrun_days > 0 %}
+                <span class="sc-overrun-pill" id="wbs-parent-overrun-badge" title="此分項網圖工期超過母節點核定工期">
+                    <span class="material-icons" style="font-size:14px;">warning</span>
+                    超出母節點工期 +{{ parent_overrun_days }} 天
+                </span>
+            {% endif %}
+        </div>
+        {% endwith %}
+    </div>
+    {% endif %}
+
     <!-- Sleek Single-Row KPI Info Strip -->
     <div class="sc-cpm-infobar" id="cpm-infobar" style="flex: 0 0 auto;">
         <div class="sc-infobar-left">
@@ -291,6 +424,53 @@
 
     <!-- Unified Multi-View Workspace Stage (Zero Popups, Unified GoJS View & Edit!) -->
     <div class="sc-cpm-stage-shell">
+        <!-- View 0: Interactive Multi-Level WBS Tree Planner -->
+        <section id="view-wbs" class="sc-view-pane">
+            <div class="sc-wbs-panel">
+                <div class="sc-wbs-toolbar">
+                    <div class="d-flex align-items-center flex-wrap gap-2">
+                        <span class="badge rounded-pill bg-primary-subtle text-primary border border-primary-subtle px-2 py-1">
+                            步驟 0 · WBS 工項階層規劃
+                        </span>
+                        <span class="small text-secondary">
+                            先排定母子工項、工期與權重（支援降階／升階與自動建立分項子網圖），完成後前往步驟 1 連接邏輯關係。
+                        </span>
+                    </div>
+                    <div class="d-flex align-items-center flex-wrap gap-2">
+                        {% if not version.cpm_locked %}
+                        <button type="button" class="btn btn-sm sc-btn-outline-clean sc-btn-sm" id="wbs-save-all-btn" disabled title="儲存所有已編輯的 WBS 工項">
+                            <span class="material-icons" style="font-size:16px;">save</span>
+                            <span class="js-save-label">已儲存</span>
+                        </button>
+                        <button type="button" class="btn btn-sm sc-btn-outline-clean sc-btn-sm" id="wbs-open-import-btn" data-bs-toggle="modal" data-bs-target="#wbs_import_json_modal" title="透過貼上或上傳 JSON 一次建立多層 WBS 與分項網圖">
+                            <span class="material-icons" style="font-size:16px;">upload_file</span>
+                            <span>匯入 WBS JSON</span>
+                        </button>
+                        {% endif %}
+                        <button type="button" class="btn btn-sm sc-btn-outline-clean sc-btn-sm" id="wbs-refresh-btn" title="立即從資料庫同步最新 CPM 與甘特圖計算結果">
+                            <span class="material-icons" style="font-size:16px;">sync</span>
+                            <span>同步計算結果</span>
+                        </button>
+                        <a href="{% url 'schedule.views.make_json_scheduleitem' version_id=version.id %}?price_type=rate&include_sub=1" class="btn btn-sm sc-btn-outline-clean sc-btn-sm" title="匯出包含所有分項子網圖的完整 JSON 2.0 備份">
+                            <span class="material-icons" style="font-size:16px;">download</span>
+                            <span>匯出完整 WBS</span>
+                        </a>
+                        <a href="{% url 'schedule.views.make_json_scheduleitem' version_id=version.id %}?format=wbs_template" class="btn btn-sm sc-btn-outline-clean sc-btn-sm" title="匯出精簡樹狀 WBS JSON 範本，方便外部或 AI 編輯後重新匯入">
+                            <span class="material-icons" style="font-size:16px;">data_object</span>
+                            <span>匯出範本</span>
+                        </a>
+                        <button type="button" class="btn btn-sm sc-btn sc-btn-primary py-1 px-3" id="wbs-go-step1-btn">
+                            <span>前往步驟 1 邏輯網圖</span>
+                            <span class="material-icons" style="font-size:16px;">arrow_forward</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="sc-wbs-body" id="wbs-planner-mount">
+                    <div class="text-center text-secondary py-5">載入 WBS 工項架構中...</div>
+                </div>
+            </div>
+        </section>
+
         <!-- View 1: Unified GoJS CPM Diagram (PDM) -->
         <section id="view-cpm" class="sc-view-pane active">
             <iframe
@@ -346,43 +526,327 @@
             {% endif %}
         </section>
 
-        <!-- View 3: In-Page S-Curve View (Gated by CPM Lock!) -->
+        <!-- View 3: Composite Progress Result Studio (Gated by BOTH Step 1 CPM Lock & Step 2 Gantt Lock!) -->
         <section id="view-scurve" class="sc-view-pane">
-            {% if version.cpm_locked %}
-                <div id="div_s_curve" class="sc-scurve-inline">
-                    <div class="sc-scurve-inline-header">
-                        <div class="fw-bold d-flex align-items-center gap-2 text-dark">
-                            <span class="material-icons text-primary">show_chart</span>
-                            預定進度 S 曲線圖
+            <!-- Hidden legacy canvas anchor so shared item_gantt.js window.onload stays error-free -->
+            <div class="d-none"><div id="div_canvas"><canvas id="canvas"></canvas></div></div>
+
+            {% if version.cpm_locked and version.gantt_locked %}
+                <div id="result-studio-panel" class="sc-result-studio">
+                    <!-- Row 1: Base Layer Picker + S-Curve Toggle + Detailed Settings + Export Actions -->
+                    <div class="sc-result-topbar">
+                        <div class="sc-result-bar-left">
+                            <span class="sc-result-label">底圖：</span>
+                            <div class="sc-mini-segmented sc-result-base-picker" id="result-base-switcher" role="group" aria-label="進度成果底圖選擇">
+                                <button type="button" class="sc-mini-seg-btn active" data-base="adm" id="result-base-adm">
+                                    <span class="material-icons">schema</span>ADM 箭線圖
+                                </button>
+                                <button type="button" class="sc-mini-seg-btn" data-base="gantt" id="result-base-gantt">
+                                    <span class="material-icons">view_timeline</span>甘特圖
+                                </button>
+                                <button type="button" class="sc-mini-seg-btn" data-base="pdm" id="result-base-pdm">
+                                    <span class="material-icons">hub</span>PDM 網圖
+                                </button>
+                            </div>
+
+                            <span class="sc-result-vsep"></span>
+
+                            <label class="sc-toggle-wrap mb-0" for="result-show-scurve">
+                                <input type="checkbox" id="result-show-scurve" class="sc-toggle-input" checked>
+                                <span class="sc-toggle-track"></span>
+                                <span class="sc-toggle-label fw-bold text-primary">疊加 S 曲線</span>
+                            </label>
+
+                            <div class="sc-result-detail-anchor">
+                                <button type="button" class="btn btn-sm sc-btn-outline-clean sc-btn-sm sc-result-detail-btn" id="result-detail-btn" aria-expanded="false" aria-controls="result-detail-popover" title="開啟日期文字顯示間隔、進度表與 S 曲線詳細設定">
+                                    <span class="material-icons" style="font-size:16px;">tune</span>
+                                    <span>詳細設定</span>
+                                    <span class="sc-result-detail-badge" id="result-detail-badge">自動</span>
+                                </button>
+
+                                <!-- Non-blocking Live-Preview Detailed Settings Popover -->
+                                <div class="sc-result-detail-popover" id="result-detail-popover" style="display:none;">
+                                    <div class="sc-result-detail-head">
+                                        <span class="fw-bold d-flex align-items-center gap-1">
+                                            <span class="material-icons text-primary" style="font-size:17px;">tune</span>
+                                            進度成果詳細設定
+                                        </span>
+                                        <div class="d-flex align-items-center gap-1">
+                                            <button type="button" class="btn btn-sm btn-link text-secondary p-0 px-1 text-decoration-none" id="result-detail-reset" style="font-size:0.75rem;">恢復預設</button>
+                                            <button type="button" class="btn-close" id="result-detail-close" aria-label="關閉" style="font-size:0.7rem;"></button>
+                                        </div>
+                                    </div>
+
+                                    <div class="sc-result-detail-body">
+                                        <!-- Section 0: Start Date & Duration Type (Convert Day Ticks to Calendar Month/Day) -->
+                                        <div class="sc-result-detail-sec">
+                                            <div class="sc-result-detail-sec-title">開工日期與工期類型（轉為月/日）</div>
+                                            <div class="sc-result-detail-row">
+                                                <label for="result-start-date" class="sc-result-ctrl-lbl">開工日期：</label>
+                                                <div class="d-flex align-items-center gap-1">
+                                                    <input type="date" id="result-start-date" class="form-control form-control-sm" style="width:142px;border-radius:7px;font-size:0.78rem;font-weight:600;">
+                                                    <button type="button" id="result-start-date-clear" class="btn btn-sm sc-btn-outline-clean sc-btn-sm py-0 px-2" title="清除開工日期並恢復相對天數（第 N 天）">清除</button>
+                                                </div>
+                                            </div>
+                                            <div class="sc-result-detail-row mt-2">
+                                                <label for="result-duration-mode" class="sc-result-ctrl-lbl">工期計算方式：</label>
+                                                <select id="result-duration-mode" class="form-select form-select-sm sc-result-select">
+                                                    <option value="calendar" selected>日曆天（含週六、週日）</option>
+                                                    <option value="workday_sun">工作天（不含週日、含週六）</option>
+                                                    <option value="workday_wknd">工作天（不含週六、週日）</option>
+                                                </select>
+                                            </div>
+                                            <div class="sc-result-detail-row mt-2">
+                                                <label for="result-calendar-format" class="sc-result-ctrl-lbl">月/日顯示格式：</label>
+                                                <select id="result-calendar-format" class="form-select form-select-sm sc-result-select">
+                                                    <option value="md" selected>月/日（例：03/15）</option>
+                                                    <option value="roc">民國年/月/日（例：115/03/15）</option>
+                                                    <option value="ymd">西元年/月/日（例：2026/03/15）</option>
+                                                </select>
+                                            </div>
+                                            <div class="sc-result-detail-hint" id="result-calendar-hint">
+                                                未設定開工日期時顯示相對天數（第 N 天）；選擇開工日期後，座標軸日期文字將自動替換為對應月/日。
+                                            </div>
+                                        </div>
+
+                                        <!-- Section 1: Date Text Display Interval -->
+                                        <div class="sc-result-detail-sec">
+                                            <div class="sc-result-detail-sec-title">日期文字與區間顯示</div>
+                                            <div class="sc-result-detail-row">
+                                                <label for="result-label-every-n" class="sc-result-ctrl-lbl">日期文字顯示間隔：</label>
+                                                <div class="d-flex align-items-center gap-1">
+                                                    <select id="result-label-every-n" class="form-select form-select-sm sc-result-select">
+                                                        <option value="auto" selected>自動（防重疊）</option>
+                                                        <option value="1">每 1 個區間（全顯）</option>
+                                                        <option value="2">每 2 個區間</option>
+                                                        <option value="3">每 3 個區間</option>
+                                                        <option value="4">每 4 個區間</option>
+                                                        <option value="5">每 5 個區間</option>
+                                                        <option value="6">每 6 個區間</option>
+                                                        <option value="8">每 8 個區間</option>
+                                                        <option value="10">每 10 個區間</option>
+                                                        <option value="custom">自訂格數…</option>
+                                                    </select>
+                                                    <input
+                                                        type="number"
+                                                        id="result-label-every-n-custom"
+                                                        class="form-control form-control-sm"
+                                                        min="1"
+                                                        max="100"
+                                                        step="1"
+                                                        value="3"
+                                                        placeholder="格數"
+                                                        style="display:none;width:62px;border-radius:7px;font-size:0.78rem;font-weight:700;text-align:center;"
+                                                    >
+                                                </div>
+                                            </div>
+                                            <div class="sc-result-detail-hint" id="result-label-every-hint">
+                                                例：日期區間選 7 天、每 3 格顯示 → 每 21 天顯示文字，<strong>最後一格固定必顯示</strong>。
+                                            </div>
+
+                                            <div class="sc-result-detail-row mt-2">
+                                                <label for="result-day-label-format" class="sc-result-ctrl-lbl">日期文字格式：</label>
+                                                <select id="result-day-label-format" class="form-select form-select-sm sc-result-select">
+                                                    <option value="full" selected>完整（第 21 天）</option>
+                                                    <option value="short">精簡（21天）</option>
+                                                    <option value="num">純數字（21）</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <!-- Section 2: S-Curve & Bottom Progress Table -->
+                                        <div class="sc-result-detail-sec" id="result-scurve-opts">
+                                            <div class="sc-result-detail-sec-title">S 曲線與底部進度表</div>
+                                            <div class="sc-result-detail-checks">
+                                                <label class="sc-result-chk" for="result-show-envelope" title="顯示最早 (ES) 與最晚 (LS) 虛線包絡線">
+                                                    <input type="checkbox" id="result-show-envelope">
+                                                    <span>ES / LS 包絡線</span>
+                                                </label>
+                                                <label class="sc-result-chk" for="result-show-pct-labels" title="於每個顯示區間與最後一格標示累計進度百分比">
+                                                    <input type="checkbox" id="result-show-pct-labels" checked>
+                                                    <span>區間 % 標註</span>
+                                                </label>
+                                                <label class="sc-result-chk" for="result-show-progress-table" title="於時間軸下方附帶區間進度與累計進度統計表">
+                                                    <input type="checkbox" id="result-show-progress-table" checked>
+                                                    <span>底部進度表</span>
+                                                </label>
+                                                <label class="sc-result-chk" for="result-table-merge" title="勾選時進度表依「日期文字顯示間隔」合併欄位，取消則逐格顯示">
+                                                    <input type="checkbox" id="result-table-merge" checked>
+                                                    <span>進度表依顯示區間合併</span>
+                                                </label>
+                                            </div>
+
+                                            <div class="sc-result-detail-row mt-2">
+                                                <label for="result-table-decimals" class="sc-result-ctrl-lbl">進度表小數位：</label>
+                                                <select id="result-table-decimals" class="form-select form-select-sm sc-result-select">
+                                                    <option value="1" selected>1 位小數（12.3%）</option>
+                                                    <option value="0">整數（12%）</option>
+                                                </select>
+                                            </div>
+
+                                            <div class="sc-result-detail-row mt-2" id="ctrl-scurve-opacity">
+                                                <label for="result-scurve-opacity" class="sc-result-ctrl-lbl">S 曲線不透明度：</label>
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <input type="range" id="result-scurve-opacity" min="0.3" max="1.0" step="0.05" value="0.95" class="sc-result-range" style="width:110px;">
+                                                    <span id="result-scurve-opacity-label" class="sc-result-val">95%</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Section 3: Layout & Header -->
+                                        <div class="sc-result-detail-sec mb-0">
+                                            <div class="sc-result-detail-sec-title">輸出標題與圖例</div>
+                                            <label class="sc-result-chk" for="result-show-header" title="於畫布與輸出圖檔頂部顯示工程標題與圖例">
+                                                <input type="checkbox" id="result-show-header" checked>
+                                                <span>顯示工程標題與圖例</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="d-flex gap-2">
-                            <button type="button" class="btn sc-btn sc-btn-primary py-1 px-3" id="save-image-btn">
-                                <span class="material-icons">download</span>另存圖片
+
+                        <div class="sc-result-bar-right">
+                            <button type="button" class="btn btn-sm sc-btn-outline-clean sc-btn-sm" id="result-sync-btn" title="立即從資料庫重新載入最新甘特圖調整後排程">
+                                <span class="material-icons" style="font-size:16px;">sync</span>
+                                <span id="result-sync-status">已同步排程</span>
+                            </button>
+
+                            <div class="btn-group" role="group">
+                                <button type="button" class="btn sc-btn sc-btn-primary py-1 px-3" id="result-export-png" title="依目前選擇之底圖、疊加 S 曲線與所有調整設定輸出 2x 高畫質 PNG">
+                                    <span class="material-icons" style="font-size:17px;">download</span>
+                                    <span>輸出成果 PNG</span>
+                                </button>
+                                <button type="button" class="btn sc-btn sc-btn-primary dropdown-toggle dropdown-toggle-split py-1 px-2" data-bs-toggle="dropdown" aria-expanded="false" title="更多輸出格式">
+                                    <span class="visually-hidden">更多輸出格式</span>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end sc-clean-dropdown">
+                                    <li>
+                                        <a class="dropdown-item" href="#" id="result-export-svg">
+                                            <span class="material-icons text-primary">polyline</span>下載成果向量檔 (SVG)
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a class="dropdown-item" href="#" id="result-print-btn">
+                                            <span class="material-icons text-secondary">print</span>列印 / 另存 PDF
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Row 2: Context-Aware Visual Adjustments -->
+                    <div class="sc-result-subbar">
+                        <div class="sc-result-ctrl-group" id="ctrl-adm-node-style">
+                            <label for="result-adm-node-style" class="sc-result-ctrl-lbl">節點樣式：</label>
+                            <select id="result-adm-node-style" class="form-select form-select-sm sc-result-select">
+                                <option value="box" selected>雙格方框 (ES/LF)</option>
+                                <option value="circle3">三格圓形 (天數/ES|LF)</option>
+                            </select>
+                        </div>
+
+                        <div class="sc-result-ctrl-group" id="ctrl-pdm-opacity" style="display:none;">
+                            <label for="result-pdm-opacity" class="sc-result-ctrl-lbl">PDM 底圖透明度：</label>
+                            <input type="range" id="result-pdm-opacity" min="0.25" max="1.0" step="0.05" value="0.78" class="sc-result-range">
+                            <span id="result-pdm-opacity-label" class="sc-result-val">78%</span>
+                            <button type="button" id="result-pdm-refresh" class="btn btn-sm sc-btn-outline-clean sc-btn-sm py-0 px-2" title="重新擷取目前 PDM 邏輯網圖畫面">
+                                <span class="material-icons" style="font-size:15px;">refresh</span>重擷 PDM
                             </button>
                         </div>
+
+                        <div class="sc-result-ctrl-group" id="ctrl-grid-step">
+                            <label for="result-grid-step" class="sc-result-ctrl-lbl">日期區間：</label>
+                            <select id="result-grid-step" class="form-select form-select-sm sc-result-select">
+                                <option value="auto" selected>自動</option>
+                                <option value="1">每天</option>
+                                <option value="5">每 5 天</option>
+                                <option value="7">每 7 天</option>
+                                <option value="10">每 10 天</option>
+                                <option value="15">每 15 天</option>
+                                <option value="30">每 30 天</option>
+                            </select>
+                        </div>
+
+                        <div class="sc-result-ctrl-group" id="ctrl-stretch">
+                            <label for="result-stretch-range" class="sc-result-ctrl-lbl">橫向展開：</label>
+                            <input type="range" id="result-stretch-range" min="0.6" max="3.0" step="0.1" value="1.1" class="sc-result-range">
+                            <span id="result-stretch-label" class="sc-result-val">1.1x</span>
+                        </div>
+
+                        <div class="sc-result-ctrl-group" id="ctrl-font-size">
+                            <label for="result-font-size" class="sc-result-ctrl-lbl">字體(px)：</label>
+                            <input
+                                type="number"
+                                id="result-font-size"
+                                class="form-control form-control-sm"
+                                min="8"
+                                max="48"
+                                step="1"
+                                placeholder="自動"
+                                title="直接輸入字體大小 (8~48)，留空為自動"
+                                style="width:62px;border-radius:7px;font-size:0.78rem;font-weight:700;text-align:center;"
+                            >
+                            <button type="button" id="result-font-auto-btn" class="btn btn-sm sc-btn-outline-clean sc-btn-sm py-0 px-2">自動</button>
+                        </div>
+
+                        <label class="sc-toggle-wrap mb-0 ms-auto" for="result-critical-only">
+                            <input type="checkbox" id="result-critical-only" class="sc-toggle-input">
+                            <span class="sc-toggle-track"></span>
+                            <span class="sc-toggle-label">僅高亮要徑</span>
+                        </label>
                     </div>
-                    <div id="div_canvas" class="sc-scurve-inline-body">
-                        <canvas id="canvas" class="bg-white"></canvas>
+
+                    <!-- Interactive Composite Canvas Stage -->
+                    <div class="sc-adm-stage" id="result-stage">
+                        <div id="result-canvas-mount" style="width:100%;height:100%;"></div>
+                        <div id="result-tooltip" class="sc-adm-tooltip" style="display:none;"></div>
+                        <div class="sc-adm-zoom-bar">
+                            <button type="button" class="sc-zoom-btn" id="result-zoom-out" title="縮小"><span class="material-icons">remove</span></button>
+                            <button type="button" class="sc-zoom-pct" id="result-zoom-reset" title="100%">100%</button>
+                            <button type="button" class="sc-zoom-btn" id="result-zoom-in" title="放大"><span class="material-icons">add</span></button>
+                            <span class="sc-zoom-sep"></span>
+                            <button type="button" class="sc-zoom-btn" id="result-zoom-fit" title="適應全圖"><span class="material-icons">fit_screen</span></button>
+                        </div>
                     </div>
                 </div>
-            {% else %}
-                <div class="d-none"><div id="div_canvas"><canvas id="canvas"></canvas></div></div>
+            {% elif version.cpm_locked %}
                 <div class="sc-locked-gate-wrap">
                     <div class="sc-locked-gate-card">
                         <div class="sc-locked-gate-icon">
                             <span class="material-icons">lock</span>
                         </div>
-                        <h5 class="fw-bold text-dark mb-2">尚未完成並鎖定 CPM 網圖，無法檢視定案 S 曲線</h5>
+                        <h5 class="fw-bold text-dark mb-2">尚未鎖定步驟 2「進度調整」，無法產出進度成果</h5>
                         <p class="text-secondary small mb-3">
-                            請先完成並鎖定 CPM 網圖，即可檢視定案預定進度 S 曲線與甘特圖即時連動曲線。
+                            請先確認步驟 2 的甘特圖排程並完成儲存，鎖定「進度調整」後即會正式開放步驟 3「進度成果」（ADM / 甘特圖 / PDM 疊加 S 曲線與輸出）。
+                        </p>
+                        <div class="d-flex justify-content-center gap-2 flex-wrap">
+                            <button type="button" class="btn sc-btn-outline-clean js-go-to-gantt">
+                                <span class="material-icons" style="font-size:17px;">view_timeline</span>前往步驟 2 進度調整
+                            </button>
+                            <button type="button" class="btn sc-btn sc-btn-lock" data-bs-toggle="modal" data-bs-target="#gantt_lock_confirm_modal">
+                                <span class="material-icons">lock</span>立即鎖定進度調整並前往成果
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            {% else %}
+                <div class="sc-locked-gate-wrap">
+                    <div class="sc-locked-gate-card">
+                        <div class="sc-locked-gate-icon">
+                            <span class="material-icons">lock</span>
+                        </div>
+                        <h5 class="fw-bold text-dark mb-2">尚未完成前置步驟鎖定，無法檢視進度成果</h5>
+                        <p class="text-secondary small mb-3">
+                            請依序完成並鎖定 <strong>步驟 1「邏輯網圖」</strong> 與 <strong>步驟 2「進度調整」</strong>，即可進入步驟 3 選擇底圖（ADM / 甘特圖 / PDM）、疊加 S 曲線並輸出進度成果。
                         </p>
                         <div class="d-flex justify-content-center gap-2 flex-wrap">
                             <button type="button" class="btn sc-btn-outline-clean js-back-to-cpm">
-                                <span class="material-icons" style="font-size:17px;">hub</span>返回 CPM 網圖
+                                <span class="material-icons" style="font-size:17px;">hub</span>返回步驟 1 邏輯網圖
                             </button>
                             {% if cpm_lock_checklist.can_lock %}
                             <button type="button" class="btn sc-btn sc-btn-lock" data-bs-toggle="modal" data-bs-target="#cpm_lock_confirm_modal">
-                                <span class="material-icons">lock</span>立即鎖定 CPM
+                                <span class="material-icons">lock</span>立即鎖定步驟 1 邏輯網圖
                             </button>
                             {% endif %}
                         </div>
@@ -585,6 +1049,61 @@
     </div>
 </div>
 
+<!-- WBS 分項預定進度管理 Modal（從母 PDM 節點下鑽 / 建立多版本分項網圖） -->
+<div class="modal fade" id="wbs_sub_schedule_modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2">
+                    <span class="material-icons text-primary">account_tree</span>
+                    <span>WBS 分項預定進度管理</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="sc-wbs-parent-card mb-3" id="wbs-modal-parent-summary">
+                    <div class="fw-bold text-dark" id="wbs-modal-item-name">載入中...</div>
+                    <div class="small text-secondary mt-1" id="wbs-modal-item-meta"></div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <span class="fw-bold small text-dark">已連結的分項預定進度版本</span>
+                        <span class="small text-secondary" id="wbs-modal-sub-count"></span>
+                    </div>
+                    <div id="wbs-modal-sub-list" class="sc-sub-list"></div>
+                </div>
+
+                <div class="sc-wbs-create-box">
+                    <div class="fw-bold small text-primary mb-2 d-flex align-items-center gap-1">
+                        <span class="material-icons" style="font-size:16px;">add_circle_outline</span>
+                        <span>建立新的分項預定進度（連結至此 PDM 節點）</span>
+                    </div>
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-7">
+                            <label for="wbs-new-sub-name" class="form-label small fw-semibold mb-1">分項預定進度名稱</label>
+                            <input type="text" id="wbs-new-sub-name" class="form-control form-control-sm" placeholder="輸入分項進度名稱">
+                        </div>
+                        <div class="col-md-2">
+                            <label for="wbs-new-sub-duration" class="form-label small fw-semibold mb-1">目標工期(天)</label>
+                            <input type="number" id="wbs-new-sub-duration" class="form-control form-control-sm" min="1" value="30">
+                        </div>
+                        <div class="col-md-3">
+                            <button type="button" class="btn sc-btn sc-btn-primary btn-sm w-100 py-1" id="wbs-create-sub-btn">
+                                <span class="material-icons" style="font-size:16px;">arrow_forward</span>
+                                建立並進入
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">關閉</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- 鎖定 CPM 確認 Modal -->
 <div class="modal fade" id="cpm_lock_confirm_modal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -598,7 +1117,7 @@
             </div>
             <div class="modal-body p-4">
                 <p class="text-secondary small mb-3">
-                    鎖定後 CPM 網圖將成為唯讀基準，同時正式解鎖「甘特圖」與「S 曲線」（甘特圖僅可在各非要徑工項的 <code>[ES, LF]</code> 範圍內調整）。
+                    鎖定後步驟 1「邏輯網圖」將成為唯讀基準，並正式開放步驟 2「進度調整」（非要徑工項僅可於 <code>[ES, LF]</code> 範圍內調整）。
                 </p>
                 <ul class="sc-lock-checklist mb-3">
                     {% for c in cpm_lock_checklist.checks %}
@@ -642,9 +1161,9 @@
             </div>
             <div class="modal-body p-4">
                 <div class="alert alert-warning small mb-0">
-                    解除鎖定後將可重新編輯 CPM 網圖，但：<br>
-                    1. 重新鎖定前將<strong>暫停使用甘特圖與定案 S 曲線</strong>。<br>
-                    2. 若重新計算 CPM 要徑，先前在甘特圖所做的浮時微調位置可能會被重設。
+                    解除鎖定後將可重新編輯步驟 1「邏輯網圖」：<br>
+                    1. 重新鎖定前將暫停步驟 2「進度調整」與步驟 3「進度成果」。<br>
+                    2. <strong>若未修改任何工項工期、權重或邏輯連線，重新鎖定時無需重新計算 CPM</strong>；若有修改並重算要徑，才需重新確認步驟 2 排程。
                 </div>
             </div>
             <div class="modal-footer">
@@ -655,11 +1174,148 @@
     </div>
 </div>
 
+<!-- 鎖定步驟 2「進度調整」確認 Modal -->
+<div class="modal fade" id="gantt_lock_confirm_modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2">
+                    <span class="material-icons text-success">lock</span>
+                    鎖定步驟 2「進度調整」並產出進度成果
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p class="text-secondary small mb-3">
+                    鎖定後步驟 2 甘特圖排程將定案為唯讀，並立即開放 <strong>步驟 3「進度成果」</strong>（可選擇 ADM / 甘特圖 / PDM 底圖、疊加 S 曲線與匯出成果圖檔）。
+                </p>
+                <div class="alert alert-danger small mb-0" id="gantt-lock-dirty-warning" style="display:none;">
+                    <strong>偵測到步驟 2 有尚未儲存的排程調整！</strong><br>
+                    請先點擊甘特圖右上角的「送出資料並更新」儲存變更後，再進行鎖定。
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn sc-btn sc-btn-lock" id="confirm-lock-gantt-btn">確定鎖定並前往進度成果</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 解除鎖定步驟 2「進度調整」確認 Modal -->
+<div class="modal fade" id="gantt_unlock_confirm_modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2">
+                    <span class="material-icons text-warning">lock_open</span>
+                    解除鎖定步驟 2「進度調整」
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="alert alert-warning small mb-0">
+                    解除鎖定後：<br>
+                    1. 步驟 1「邏輯網圖」仍維持鎖定，<strong>無需重新計算 CPM</strong>。<br>
+                    2. 步驟 2「進度調整」將重新開放拖拉微調非要徑排程；完成後再次鎖定即可產出最新步驟 3 進度成果。
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-warning fw-bold text-dark" id="confirm-unlock-gantt-btn">確定解除鎖定進度調整</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 匯入 WBS 階層 JSON Modal（支援貼上或上傳，自動偵測精簡 WBS / 2.0-wbs / 舊版 jsrcm） -->
+<div class="modal fade" id="wbs_import_json_modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2">
+                    <span class="material-icons text-primary">account_tree</span>
+                    匯入 WBS 階層 JSON（母子網圖自動建立）
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="alert alert-info small py-2 mb-3">
+                    <strong>自動相容三種格式：</strong>
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle">wbs-import-1.0 精簡樹狀</span>
+                    <span class="badge bg-success-subtle text-success border border-success-subtle">2.0-wbs 完整母子專案</span>
+                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">jsrcm 舊版 JSON/SCPM</span>
+                    <div class="mt-1 text-secondary">匯入將以新資料重建此版本的工項與連線；若含 <code>children</code> 或 <code>sub_schedule</code>，系統將自動建立連結的分項子網圖。</div>
+                </div>
+
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="btn btn-sm sc-btn-outline-clean sc-btn-sm mb-0" for="wbs-import-file-input">
+                            <span class="material-icons" style="font-size:16px;">folder_open</span>
+                            <span>選擇 JSON / SCPM 檔案</span>
+                        </label>
+                        <input type="file" id="wbs-import-file-input" accept=".json,.scpm,application/json" class="d-none">
+                        <span class="small text-secondary" id="wbs-import-file-name">未選擇檔案（或直接於下方貼上 JSON）</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-1">
+                        <button type="button" class="btn btn-sm sc-btn-outline-clean sc-btn-sm" id="wbs-load-sample-btn">
+                            <span class="material-icons" style="font-size:15px;">auto_awesome</span>
+                            <span>載入範例／目前範本 JSON</span>
+                        </button>
+                        <a href="{% url 'schedule.views.make_json_scheduleitem' version_id=version.id %}?format=wbs_template" class="btn btn-sm sc-btn-outline-clean sc-btn-sm" title="下載目前專案的精簡 WBS JSON 範本">
+                            <span class="material-icons" style="font-size:15px;">download</span>
+                        </a>
+                    </div>
+                </div>
+
+                <textarea
+                    id="wbs-import-json-text"
+                    class="form-control font-monospace"
+                    rows="12"
+                    style="font-size: 0.78rem; line-height: 1.45;"
+                    placeholder='{
+  "schema_version": "wbs-import-1.0",
+  "project_name": "範例工程總預定進度",
+  "duration": 120,
+  "wbs_nodes": [
+    { "wbs_code": "1", "name": "假設工程", "duration": 20, "weight": 15, "predecessors": [] },
+    { "wbs_code": "2", "name": "主體結構工程", "duration": 70, "weight": 60, "predecessors": ["1"],
+      "children": [
+        { "wbs_code": "2.1", "name": "基礎開挖", "duration": 30, "weight": 40, "predecessors": [] },
+        { "wbs_code": "2.2", "name": "結構體澆置", "duration": 40, "weight": 60, "predecessors": ["2.1"] }
+      ]
+    },
+    { "wbs_code": "3", "name": "裝修驗收", "duration": 30, "weight": 25, "predecessors": ["2"] }
+  ]
+}'
+                ></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn sc-btn sc-btn-primary" id="wbs-import-submit-btn">
+                    <span class="material-icons" style="font-size:17px;">publish</span>
+                    <span>確認匯入並建立 WBS</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 (function () {
     var activeView = 'cpm';
     var isEditingCpm = false;
     var ganttLoaded = false;
+    var ganttHasUnsavedChanges = false;
+    var resultStudio = null;
+    var resultDataDirty = false;
+    var wbsPlanner = null;
+    var wbsLoaded = false;
+    var wbsStructureDirty = false;
+    var latestNodesData = Array.isArray(CPM_NODES_DATA) ? CPM_NODES_DATA : [];
+    var latestLinksData = Array.isArray(CPM_LINKS_DATA) ? CPM_LINKS_DATA : [];
+    var pdmSnapshotLoaded = false;
+    var pdmFallbackUrl = '/schedule/download_file/Version_Schedule/' + version_id + '/?open=true';
 
     function getDuration() {
         return parseInt($('#version_duration').text(), 10) || 0;
@@ -669,6 +1325,365 @@
         var frame = document.getElementById('iframe-cpm');
         if (frame && frame.contentWindow) {
             frame.contentWindow.postMessage(payload, window.location.origin);
+        }
+    }
+
+    function updateResultContextControls(baseLayer) {
+        $('#ctrl-adm-node-style').toggle(baseLayer === 'adm');
+        $('#ctrl-pdm-opacity').toggle(baseLayer === 'pdm');
+        var showCurve = $('#result-show-scurve').is(':checked');
+        $('#ctrl-scurve-opacity').toggle(showCurve);
+        $('#result-show-envelope, #result-show-pct-labels, #result-show-progress-table, #result-table-merge, #result-table-decimals').prop('disabled', !showCurve);
+    }
+
+    function requestPdmSnapshot() {
+        var critOnly = $('#result-critical-only').is(':checked');
+        postToCpm({
+            type: 'cpm:request-snapshot',
+            requestId: 'rs_' + Date.now(),
+            criticalOnly: critOnly
+        });
+        // Fallback to saved Version_Schedule image (converted to inline dataURL so PNG export never taints canvas)
+        setTimeout(function () {
+            if (pdmSnapshotLoaded || !resultStudio) return;
+            fetch(pdmFallbackUrl)
+                .then(function (resp) {
+                    if (!resp.ok) throw new Error('no file');
+                    return resp.blob();
+                })
+                .then(function (blob) {
+                    return new Promise(function (resolve, reject) {
+                        var reader = new FileReader();
+                        reader.onloadend = function () { resolve(reader.result); };
+                        reader.onerror = reject;
+                        reader.readAsDataURL(blob);
+                    });
+                })
+                .then(function (dataUrl) {
+                    if (!pdmSnapshotLoaded && resultStudio && dataUrl) {
+                        var probe = new Image();
+                        probe.onload = function () {
+                            pdmSnapshotLoaded = true;
+                            resultStudio.setPdmSnapshot(dataUrl, probe.naturalWidth || 1200, probe.naturalHeight || 680);
+                        };
+                        probe.src = dataUrl;
+                    }
+                })
+                .catch(function () {});
+        }, 700);
+    }
+
+    function syncResultDataFromServer(autoFit) {
+        if (!IS_CPM_LOCKED || !IS_GANTT_LOCKED) return;
+        $('#result-sync-status').text('同步中...');
+        $.ajax({
+            url: '/schedule/api/active/scheduleitem/?limit=0&version=' + version_id + '&kind=11&order_by=priority',
+            type: 'GET',
+            dataType: 'json',
+            success: function (res) {
+                var objs = (res && Array.isArray(res.objects)) ? res.objects : [];
+                latestNodesData = objs.map(function (o) {
+                    return {
+                        id: o.id,
+                        name: o.name || '未命名工項',
+                        es: Number(o.es || 0),
+                        ef: Number(o.ef || 1),
+                        ls: Number(o.ls || 0),
+                        lf: Number(o.lf || 1),
+                        duration: Number(o.duration || 1),
+                        unit_price: Number(o.unit_price || 0),
+                        cp: Boolean(o.cp)
+                    };
+                });
+                resultDataDirty = false;
+                $('#result-sync-status').text('已同步最新排程');
+                if (resultStudio) {
+                    resultStudio.setData(latestNodesData, latestLinksData, getDuration(), Boolean(autoFit));
+                }
+            },
+            error: function () {
+                $('#result-sync-status').text('使用快取排程');
+            }
+        });
+    }
+
+    function initOrRefreshResultStudio(forceFit) {
+        if (!IS_CPM_LOCKED || !IS_GANTT_LOCKED) return;
+        var mount = document.getElementById('result-canvas-mount');
+        if (!mount || typeof window.ResultStudioCanvas !== 'function') return;
+
+        if (!resultStudio) {
+            var maxDay = Math.max(1, getDuration());
+            latestNodesData.forEach(function (n) {
+                if (Number(n.ef || 0) > maxDay) maxDay = Number(n.ef || 0);
+            });
+            var recStep = window.ResultStudioCanvas.recommendGridStep(maxDay);
+            var $stepSel = $('#result-grid-step');
+            $stepSel.find('option').each(function () {
+                var baseTxt = $(this).text().replace('（建議）', '');
+                $(this).text($(this).val() === String(recStep) ? (baseTxt + '（建議）') : baseTxt);
+            });
+            $stepSel.val(String(recStep));
+
+            resultStudio = new window.ResultStudioCanvas({
+                container: mount,
+                tooltipEl: document.getElementById('result-tooltip'),
+                zoomLabelEl: document.getElementById('result-zoom-reset'),
+                nodes: latestNodesData,
+                links: latestLinksData,
+                projectTitle: project_name || '',
+                targetDuration: getDuration(),
+                baseLayer: 'adm',
+                nodeStyle: $('#result-adm-node-style').val() || 'box',
+                stretch: parseFloat($('#result-stretch-range').val()) || 1.1,
+                fontSize: 'auto',
+                gridStep: String(recStep),
+                criticalOnly: $('#result-critical-only').is(':checked'),
+                pdmOpacity: parseFloat($('#result-pdm-opacity').val()) || 0.78,
+                showSCurve: $('#result-show-scurve').is(':checked'),
+                showEnvelope: $('#result-show-envelope').is(':checked'),
+                showPctLabels: $('#result-show-pct-labels').is(':checked'),
+                showProgressTable: $('#result-show-progress-table').is(':checked'),
+                scurveOpacity: parseFloat($('#result-scurve-opacity').val()) || 0.95,
+                showHeader: $('#result-show-header').is(':checked'),
+                labelEveryN: 'auto',
+                dayLabelFormat: $('#result-day-label-format').val() || 'full',
+                tableMergeByLabelStep: $('#result-table-merge').is(':checked'),
+                tableDecimals: parseInt($('#result-table-decimals').val(), 10),
+                startDateStr: $('#result-start-date').val() || '',
+                durationMode: $('#result-duration-mode').val() || 'calendar',
+                calendarDateFormat: $('#result-calendar-format').val() || 'md',
+                onMetaChange: function (meta) {
+                    var isAuto = ($('#result-label-every-n').val() === 'auto');
+                    var effN = meta.effectiveLabelN || 1;
+                    var stepDays = meta.step || 1;
+                    var spanDays = effN * stepDays;
+                    var maxD = meta.maxDay || getDuration();
+                    var badgePrefix = meta.hasCalendarDate ? '月日·' : '';
+                    $('#result-detail-badge').text(badgePrefix + (isAuto ? ('自動·每' + effN + '格') : ('每' + effN + '格')));
+                    var lastLabelTxt = meta.hasCalendarDate && meta.endDateText ? meta.endDateText : ('第 ' + maxD + ' 天');
+                    $('#result-label-every-hint').html(
+                        '目前：日期區間每 <strong>' + stepDays + ' 天</strong>，每 <strong>' + effN + ' 格</strong>（約每 ' + spanDays + ' 天）顯示文字；<strong>最後一格（' + lastLabelTxt + '）固定必顯示</strong>。'
+                    );
+                    if (meta.hasCalendarDate && meta.startDateText && meta.endDateText) {
+                        $('#result-calendar-hint').html(
+                            '已換算為實際日期：開工 <strong>' + meta.startDateText + '</strong> ～ 預定完工 <strong>' + meta.endDateText + '</strong>（' + maxD + ' ' + (meta.durationModeLabel || '日曆天') + '）。'
+                        );
+                    } else {
+                        $('#result-calendar-hint').html(
+                            '未設定開工日期時顯示相對天數（第 N 天）；選擇開工日期後，座標軸日期文字將自動替換為對應月/日。'
+                        );
+                    }
+                }
+            });
+
+            // Detailed Settings Popover Toggle (non-blocking live preview!)
+            $('#result-detail-btn').on('click', function (e) {
+                e.stopPropagation();
+                var $pop = $('#result-detail-popover');
+                var willShow = !$pop.is(':visible');
+                $pop.toggle(willShow);
+                $(this).toggleClass('is-open', willShow).attr('aria-expanded', String(willShow));
+            });
+            $('#result-detail-close').on('click', function () {
+                $('#result-detail-popover').hide();
+                $('#result-detail-btn').removeClass('is-open').attr('aria-expanded', 'false');
+            });
+            $('#result-detail-popover').on('click', function (e) {
+                e.stopPropagation();
+            });
+            $(document).on('click.resultDetail', function () {
+                if ($('#result-detail-popover').is(':visible')) {
+                    $('#result-detail-popover').hide();
+                    $('#result-detail-btn').removeClass('is-open').attr('aria-expanded', 'false');
+                }
+            });
+
+            // Start Date & Duration Mode Controls (Calendar / Working Days -> Month/Day Labels)
+            $('#result-start-date').on('change', function () {
+                resultStudio.setStartDate(this.value || '');
+            });
+            $('#result-start-date-clear').on('click', function () {
+                $('#result-start-date').val('');
+                resultStudio.setStartDate('');
+            });
+            $('#result-duration-mode').on('change', function () {
+                resultStudio.setDurationMode(this.value);
+            });
+            $('#result-calendar-format').on('change', function () {
+                resultStudio.setCalendarDateFormat(this.value);
+            });
+
+            // Detailed Settings Controls (Date Label Interval, Format, Table Merge, Decimals, Reset)
+            $('#result-label-every-n').on('change', function () {
+                var val = $(this).val();
+                if (val === 'custom') {
+                    $('#result-label-every-n-custom').show().focus();
+                    var n = Math.max(1, parseInt($('#result-label-every-n-custom').val(), 10) || 1);
+                    resultStudio.setLabelEveryN(n);
+                } else {
+                    $('#result-label-every-n-custom').hide();
+                    resultStudio.setLabelEveryN(val);
+                }
+            });
+            $('#result-label-every-n-custom').on('input change', function () {
+                var n = Math.max(1, Math.min(100, parseInt(this.value, 10) || 1));
+                resultStudio.setLabelEveryN(n);
+            });
+            $('#result-day-label-format').on('change', function () {
+                resultStudio.setDayLabelFormat(this.value);
+            });
+            $('#result-table-merge').on('change', function () {
+                resultStudio.setTableMergeByLabelStep(this.checked);
+            });
+            $('#result-table-decimals').on('change', function () {
+                resultStudio.setTableDecimals(parseInt(this.value, 10));
+            });
+            $('#result-detail-reset').on('click', function () {
+                $('#result-start-date').val('');
+                $('#result-duration-mode').val('calendar');
+                $('#result-calendar-format').val('md');
+                $('#result-label-every-n').val('auto');
+                $('#result-label-every-n-custom').hide().val('3');
+                $('#result-day-label-format').val('full');
+                $('#result-show-envelope').prop('checked', false);
+                $('#result-show-pct-labels').prop('checked', true);
+                $('#result-show-progress-table').prop('checked', true);
+                $('#result-table-merge').prop('checked', true);
+                $('#result-table-decimals').val('1');
+                $('#result-show-header').prop('checked', true);
+                $('#result-scurve-opacity').val('0.95');
+                $('#result-scurve-opacity-label').text('95%');
+                resultStudio.startDateStr = '';
+                resultStudio.durationMode = 'calendar';
+                resultStudio.calendarDateFormat = 'md';
+                resultStudio.labelEveryN = 'auto';
+                resultStudio.dayLabelFormat = 'full';
+                resultStudio.showEnvelope = false;
+                resultStudio.showPctLabels = true;
+                resultStudio.showProgressTable = true;
+                resultStudio.tableMergeByLabelStep = true;
+                resultStudio.tableDecimals = 1;
+                resultStudio.showHeader = true;
+                resultStudio.scurveOpacity = 0.95;
+                resultStudio.render(false);
+            });
+
+            // Base Layer Switcher (ADM / Gantt / PDM)
+            $('#result-base-switcher .sc-mini-seg-btn').on('click', function () {
+                var nextBase = $(this).data('base');
+                $('#result-base-switcher .sc-mini-seg-btn').removeClass('active');
+                $(this).addClass('active');
+                updateResultContextControls(nextBase);
+                resultStudio.setBaseLayer(nextBase);
+                if (nextBase === 'pdm') {
+                    requestPdmSnapshot();
+                }
+            });
+
+            // S-Curve Overlay Controls
+            $('#result-show-scurve').on('change', function () {
+                updateResultContextControls(resultStudio.baseLayer);
+                resultStudio.setShowSCurve(this.checked);
+            });
+            $('#result-show-envelope').on('change', function () {
+                resultStudio.setShowEnvelope(this.checked);
+            });
+            $('#result-show-pct-labels').on('change', function () {
+                resultStudio.setShowPctLabels(this.checked);
+            });
+            $('#result-show-progress-table').on('change', function () {
+                resultStudio.setShowProgressTable(this.checked);
+            });
+            $('#result-show-header').on('change', function () {
+                resultStudio.setShowHeader(this.checked);
+            });
+            $('#result-scurve-opacity').on('input', function () {
+                var v = parseFloat(this.value) || 0.95;
+                $('#result-scurve-opacity-label').text(Math.round(v * 100) + '%');
+                resultStudio.setSCurveOpacity(v);
+            });
+
+            // Base Visual Adjustment Controls
+            $('#result-adm-node-style').on('change', function () {
+                resultStudio.setNodeStyle(this.value);
+            });
+            $('#result-pdm-opacity').on('input', function () {
+                var v = parseFloat(this.value) || 0.78;
+                $('#result-pdm-opacity-label').text(Math.round(v * 100) + '%');
+                resultStudio.setPdmOpacity(v);
+            });
+            $('#result-pdm-refresh').on('click', function () {
+                pdmSnapshotLoaded = false;
+                requestPdmSnapshot();
+            });
+            $('#result-grid-step').on('change', function () {
+                resultStudio.setGridStep(this.value);
+            });
+            $('#result-stretch-range').on('input', function () {
+                var v = parseFloat(this.value) || 1.1;
+                $('#result-stretch-label').text(v.toFixed(1) + 'x');
+                resultStudio.setStretch(v);
+            });
+            $('#result-font-size').on('input change', function () {
+                var raw = String(this.value || '').trim();
+                if (!raw) {
+                    resultStudio.setFontSize('auto');
+                } else {
+                    var num = parseFloat(raw);
+                    if (!isNaN(num) && num >= 8 && num <= 48) {
+                        resultStudio.setFontSize(num);
+                    }
+                }
+            });
+            $('#result-font-auto-btn').on('click', function () {
+                $('#result-font-size').val('');
+                resultStudio.setFontSize('auto');
+            });
+            $('#result-critical-only').on('change', function () {
+                resultStudio.setCriticalOnly(this.checked);
+                if (resultStudio.baseLayer === 'pdm') {
+                    pdmSnapshotLoaded = false;
+                    requestPdmSnapshot();
+                }
+            });
+
+            // Sync & Zoom Controls
+            $('#result-sync-btn').on('click', function () {
+                syncResultDataFromServer(false);
+            });
+            $('#result-zoom-in').on('click', function () { resultStudio.zoomIn(); });
+            $('#result-zoom-out').on('click', function () { resultStudio.zoomOut(); });
+            $('#result-zoom-reset').on('click', function () { resultStudio.zoomReset(); });
+            $('#result-zoom-fit').on('click', function () { resultStudio.fitToView(); });
+
+            // WYSIWYG Exports (PNG / SVG / Print-PDF)
+            function buildExportFilename(ext) {
+                var layerNameMap = { adm: 'ADM箭線圖', gantt: '甘特圖', pdm: 'PDM網圖' };
+                var layerLabel = layerNameMap[resultStudio.baseLayer] || '進度圖';
+                var suffix = resultStudio.showSCurve ? '_S曲線' : '';
+                return (project_name || '預定進度') + '_' + layerLabel + suffix + '_進度成果.' + ext;
+            }
+            $('#result-export-png').on('click', function () {
+                resultStudio.exportPng(buildExportFilename('png'));
+            });
+            $('#result-export-svg').on('click', function (e) {
+                e.preventDefault();
+                resultStudio.exportSvg(buildExportFilename('svg'));
+            });
+            $('#result-print-btn').on('click', function (e) {
+                e.preventDefault();
+                resultStudio.printChart();
+            });
+
+            updateResultContextControls('adm');
+            syncResultDataFromServer(true);
+        } else {
+            if (resultDataDirty) {
+                syncResultDataFromServer(Boolean(forceFit));
+            } else if (forceFit) {
+                requestAnimationFrame(function () { resultStudio.fitToView(); });
+            }
         }
     }
 
@@ -710,6 +1725,44 @@
         postToCpm({ type: 'cpm:set-edit-mode', editable: isEditingCpm });
     }
 
+    function updateWeightPillFromWbs(tree) {
+        if (!tree) return;
+        var $pill = $('#weight-status-pill');
+        if (!$pill.length) return;
+        if (tree.weight_valid) {
+            $pill.removeClass('is-invalid').addClass('is-valid')
+                .html('權重總計：100% <span class="material-icons" style="font-size:15px;">check</span>');
+        } else {
+            var sign = tree.weight_diff > 0 ? '+' : '';
+            $pill.removeClass('is-valid').addClass('is-invalid')
+                .text('權重總計：' + tree.weight_total + '%（差額 ' + sign + tree.weight_diff + '%）');
+        }
+    }
+
+    function ensureWbsPlanner() {
+        if (!wbsPlanner && typeof window.WbsPlanner === 'function') {
+            wbsPlanner = new window.WbsPlanner({
+                versionId: version_id,
+                mountEl: document.getElementById('wbs-planner-mount'),
+                onStructureChanged: function (tree) {
+                    wbsStructureDirty = true;
+                    updateWeightPillFromWbs(tree);
+                }
+            });
+        }
+        return wbsPlanner;
+    }
+
+    function refreshCpmIframeIfDirty() {
+        if (!wbsStructureDirty) return;
+        var frame = document.getElementById('iframe-cpm');
+        if (frame) {
+            var readonlyFlag = isEditingCpm ? '0' : '1';
+            frame.src = '/schedule/cpm_diagram/?version_id=' + version_id + '&embed=1&readonly=' + readonlyFlag + '&v=' + Date.now();
+        }
+        wbsStructureDirty = false;
+    }
+
     function switchView(target) {
         if (IS_CPM_LOCKED && (target === 'gantt' || target === 'scurve') && getDuration() <= 0) {
             Lobibox.notify('warning', {
@@ -728,10 +1781,20 @@
 
         $('#cpm-canvas-controls').toggle(target === 'cpm');
 
-        if (target === 'gantt' && IS_CPM_LOCKED && !ganttLoaded) {
+        if (target === 'wbs') {
+            var planner = ensureWbsPlanner();
+            if (planner && (!wbsLoaded || isEditingCpm)) {
+                wbsLoaded = true;
+                planner.load();
+            }
+        } else if (target === 'cpm') {
+            refreshCpmIframeIfDirty();
+        } else if (target === 'gantt' && IS_CPM_LOCKED && !ganttLoaded) {
             var $gf = $('#iframe-gantt');
             $gf.attr('src', $gf.data('src'));
             ganttLoaded = true;
+        } else if (target === 'scurve' && IS_CPM_LOCKED && IS_GANTT_LOCKED) {
+            initOrRefreshResultStudio(true);
         }
     }
 
@@ -762,34 +1825,406 @@
         });
     }
 
+    function toggleGanttLock(action, redirectTab) {
+        if (action === 'lock' && ganttHasUnsavedChanges) {
+            Lobibox.notify('warning', {
+                title: '尚有未儲存變更',
+                msg: '請先點擊甘特圖右上角的「送出資料並更新」儲存後，再鎖定進度調整。'
+            });
+            return;
+        }
+        $.ajax({
+            url: '/schedule/api/active/version_schedule/' + version_id + '/toggle_gantt_lock/',
+            type: 'POST',
+            data: JSON.stringify({ action: action }),
+            contentType: 'application/json',
+            dataType: 'json',
+            beforeSend: function (XHR) {
+                XHR.setRequestHeader('X-CSRFToken', CSRFMIDDLEWARETOKEN);
+            },
+            success: function () {
+                var url = window.location.pathname;
+                if (redirectTab) {
+                    url += '?tab=' + encodeURIComponent(redirectTab);
+                }
+                window.location.href = url;
+            },
+            error: function (xhr) {
+                var msg = '操作失敗，請確認步驟 1 已完成鎖定。';
+                if (xhr.responseJSON && xhr.responseJSON.msg) {
+                    msg = xhr.responseJSON.msg;
+                }
+                Lobibox.notify('error', { title: '無法鎖定', msg: msg });
+            }
+        });
+    }
+
+    // Listen to child iframes: Step 1 PDM snapshots & Step 2 Gantt dirty/save state
+    window.addEventListener('message', function (ev) {
+        if (ev.origin !== window.location.origin) return;
+        var msg = ev.data || {};
+        if (msg.type === 'cpm:snapshot-ready' && msg.dataUrl) {
+            pdmSnapshotLoaded = true;
+            if (resultStudio) {
+                resultStudio.setPdmSnapshot(msg.dataUrl, msg.width || 1200, msg.height || 680);
+            }
+        } else if (msg.type === 'cpm:open-sub-schedule' && msg.itemId) {
+            openWbsSubScheduleModal(msg.itemId);
+        } else if (msg.type === 'cpm:saved') {
+            wbsLoaded = false;
+        } else if (msg.type === 'gantt:dirty') {
+            ganttHasUnsavedChanges = Boolean(msg.dirty);
+            $('#gantt-lock-dirty-warning').toggle(ganttHasUnsavedChanges);
+            $('#confirm-lock-gantt-btn').prop('disabled', ganttHasUnsavedChanges);
+        } else if (msg.type === 'gantt:saved') {
+            ganttHasUnsavedChanges = false;
+            $('#gantt-lock-dirty-warning').hide();
+            $('#confirm-lock-gantt-btn').prop('disabled', false);
+            resultDataDirty = true;
+            wbsLoaded = false; // Force Step 0 WBS table to refresh synced plan_start/plan_end next time user opens it
+            $('#result-sync-status').text('排程已更新');
+            if (activeView === 'scurve' && IS_GANTT_LOCKED) {
+                syncResultDataFromServer(false);
+            }
+        }
+    });
+
+    var activeWbsItemId = null;
+    var wbsModalInstance = null;
+
+    function openWbsSubScheduleModal(itemId) {
+        activeWbsItemId = itemId;
+        var modalEl = document.getElementById('wbs_sub_schedule_modal');
+        if (!modalEl) return;
+        if (!wbsModalInstance) {
+            wbsModalInstance = new bootstrap.Modal(modalEl);
+        }
+        $('#wbs-modal-item-name').text('載入母工項資訊中...');
+        $('#wbs-modal-item-meta').text('');
+        $('#wbs-modal-sub-list').html('<div class="text-center text-secondary small py-3">載入分項版本中...</div>');
+        wbsModalInstance.show();
+
+        $.ajax({
+            url: '/schedule/api/active/scheduleitem/' + itemId + '/sub_schedules/',
+            type: 'GET',
+            dataType: 'json',
+            success: function (res) {
+                var item = res.item || {};
+                var subs = res.sub_schedules || [];
+                $('#wbs-modal-item-name').text('母工項節點：' + (item.name || '未命名'));
+                $('#wbs-modal-item-meta').html(
+                    '母工期：<strong>' + (item.duration || 0) + ' 天</strong>　｜　' +
+                    '母排程區間：<strong>第 ' + (item.es || 1) + ' ～ ' + (item.ef || 1) + ' 天</strong>　｜　' +
+                    '母權重：<strong>' + Number(item.unit_price || 0).toFixed(2) + '%</strong>'
+                );
+                $('#wbs-new-sub-name').val((item.version_name || project_name || '') + ' - ' + (item.name || '分項'));
+                $('#wbs-new-sub-duration').val(Math.max(1, parseInt(item.duration || 30, 10)));
+                $('#wbs-modal-sub-count').text('共 ' + subs.length + ' 個版本');
+
+                if (!subs.length) {
+                    $('#wbs-modal-sub-list').html(
+                        '<div class="text-center text-secondary small py-3 border rounded-3 bg-light">此 PDM 節點尚未建立分項預定進度，可於下方一鍵建立並進入繪製。</div>'
+                    );
+                    return;
+                }
+
+                var html = '';
+                subs.forEach(function (sv) {
+                    var badgeCls = sv.stage_code === 'done'
+                        ? 'bg-success-subtle text-success border-success-subtle'
+                        : (sv.stage_code === 'step2' ? 'bg-primary-subtle text-primary border-primary-subtle' : 'bg-warning-subtle text-warning-emphasis border-warning-subtle');
+                    var overrunHtml = sv.overrun_days > 0
+                        ? '<span class="badge rounded-pill bg-danger-subtle text-danger ms-1">超出母工期 +' + sv.overrun_days + ' 天</span>'
+                        : '';
+                    var upd = (sv.update_time || '').replace('T', ' ').slice(0, 16);
+                    var latestHtml = sv.is_latest
+                        ? '<span class="badge rounded-pill bg-primary text-white">最新</span>'
+                        : '';
+                    html += '<div class="sc-sub-row">' +
+                        '<div>' +
+                            '<div class="d-flex align-items-center flex-wrap gap-2">' +
+                                '<span class="badge rounded-pill bg-dark-subtle text-dark">v' + sv.version_number + '</span>' +
+                                latestHtml +
+                                '<strong class="text-dark">' + $('<div>').text(sv.project_name).html() + '</strong>' +
+                                '<span class="badge rounded-pill border ' + badgeCls + '">' + sv.stage_label + '</span>' +
+                                overrunHtml +
+                            '</div>' +
+                            '<div class="small text-secondary mt-1">目標工期：' + sv.duration + ' 天　｜　最後更新：' + upd + '</div>' +
+                        '</div>' +
+                        '<div class="d-flex align-items-center gap-2">' +
+                            '<button type="button" class="btn btn-sm sc-btn-outline-clean sc-btn-sm js-wbs-clone-sub" data-sub-id="' + sv.id + '" title="複製此版本為下一版">複製新版</button>' +
+                            '<button type="button" class="btn btn-sm btn-outline-danger py-1 px-2 js-wbs-delete-sub" data-sub-id="' + sv.id + '" data-sub-name="' + $('<div>').text(sv.project_name).html() + ' (v' + sv.version_number + ')" title="刪除此分項子網圖版本">刪除</button>' +
+                            '<a href="' + sv.url + '" class="btn btn-sm sc-btn sc-btn-primary py-1 px-2">進入網圖</a>' +
+                        '</div>' +
+                    '</div>';
+                });
+                $('#wbs-modal-sub-list').html(html);
+            },
+            error: function () {
+                $('#wbs-modal-sub-list').html('<div class="alert alert-danger small mb-0">讀取分項進度失敗，請重新整理後再試。</div>');
+            }
+        });
+    }
+
     $(document).ready(function () {
+        // Create Next Version (vN+1) in jsrcm version chain (preserves parent & parent_item!)
+        $('#btn-create-next-version').on('click', function (e) {
+            e.preventDefault();
+            Lobibox.confirm({
+                title: '建立新版本確認',
+                msg: '是否以目前版本為基礎，複製建立下一個版本（將保留原版本歷程與母子 WBS 關聯）？',
+                buttons: {
+                    accept: { 'class': 'lobibox-btn lobibox-btn-yes', text: '建立新版本', closeOnClick: true },
+                    cancel: { 'class': 'lobibox-btn lobibox-btn-no', text: '取消', closeOnClick: true }
+                },
+                callback: function ($this, type) {
+                    if (type !== 'accept') return;
+                    $.ajax({
+                        url: '/schedule/api/active/version_schedule/',
+                        type: 'POST',
+                        data: JSON.stringify({
+                            clone_version: version_id,
+                            as_new_version: true,
+                            schedule_setting_type: schedule_setting_type
+                        }),
+                        contentType: 'application/json',
+                        dataType: 'json',
+                        beforeSend: function (XHR) { XHR.setRequestHeader('X-CSRFToken', CSRFMIDDLEWARETOKEN); },
+                        success: function (json) {
+                            window.location.href = '/schedule/item_profile/' + json.id + '/';
+                        },
+                        error: function () {
+                            Lobibox.notify('error', { title: '建立失敗', msg: '無法建立新版本，請稍後再試。' });
+                        }
+                    });
+                }
+            });
+        });
+
+        // Create new sub-schedule from WBS Modal
+        $('#wbs-create-sub-btn').on('click', function () {
+            if (!activeWbsItemId) return;
+            var $btn = $(this);
+            var subName = String($('#wbs-new-sub-name').val() || '').trim();
+            var subDur = parseInt($('#wbs-new-sub-duration').val(), 10) || 30;
+            $btn.prop('disabled', true);
+            $.ajax({
+                url: '/schedule/api/active/scheduleitem/' + activeWbsItemId + '/sub_schedules/',
+                type: 'POST',
+                data: JSON.stringify({ project_name: subName, duration: subDur }),
+                contentType: 'application/json',
+                dataType: 'json',
+                beforeSend: function (XHR) { XHR.setRequestHeader('X-CSRFToken', CSRFMIDDLEWARETOKEN); },
+                success: function (res) {
+                    if (res && res.url) {
+                        window.location.href = res.url;
+                    }
+                },
+                error: function () {
+                    $btn.prop('disabled', false);
+                    Lobibox.notify('error', { title: '建立失敗', msg: '無法建立分項預定進度。' });
+                }
+            });
+        });
+
+        // Delete a sub-schedule version from WBS Modal
+        $(document).on('click', '.js-wbs-delete-sub', function () {
+            if (!activeWbsItemId) return;
+            var delSubId = $(this).data('sub-id');
+            var delSubName = $(this).data('sub-name') || '此分項網圖';
+            Lobibox.confirm({
+                title: '刪除分項子網圖確認',
+                msg: '確定要刪除分項子網圖「<strong>' + $('<div>').text(delSubName).html() + '</strong>」嗎？（刪除後將無法恢復，其下屬細項與巢狀子網圖亦會一併移除）',
+                buttons: {
+                    accept: { 'class': 'lobibox-btn lobibox-btn-yes', text: '確定刪除', closeOnClick: true },
+                    cancel: { 'class': 'lobibox-btn lobibox-btn-no', text: '取消', closeOnClick: true }
+                },
+                callback: function ($this, type) {
+                    if (type !== 'accept') return;
+                    $.ajax({
+                        url: '/schedule/api/active/version_schedule/' + delSubId + '/',
+                        type: 'DELETE',
+                        dataType: 'json',
+                        beforeSend: function (XHR) { XHR.setRequestHeader('X-CSRFToken', CSRFMIDDLEWARETOKEN); },
+                        success: function () {
+                            Lobibox.notify('success', { title: '已刪除', msg: '分項子網圖已刪除。' });
+                            wbsLoaded = false;
+                            postToCpm({ type: 'cpm:refresh-wbs-badges' });
+                            openWbsSubScheduleModal(activeWbsItemId);
+                        },
+                        error: function () {
+                            Lobibox.notify('error', { title: '刪除失敗', msg: '無法刪除此分項子網圖，請稍後再試。' });
+                        }
+                    });
+                }
+            });
+        });
+
+        // Delete current sub-schedule from its own topbar "More" menu
+        $('#btn-delete-current-sub').on('click', function (e) {
+            e.preventDefault();
+            var parentVerId = $(this).data('parent-ver-id');
+            Lobibox.confirm({
+                title: '刪除此分項子網圖確認',
+                msg: '確定要刪除此分項子網圖嗎？刪除後將無法恢復並自動返回上層母預定進度。',
+                buttons: {
+                    accept: { 'class': 'lobibox-btn lobibox-btn-yes', text: '確定刪除', closeOnClick: true },
+                    cancel: { 'class': 'lobibox-btn lobibox-btn-no', text: '取消', closeOnClick: true }
+                },
+                callback: function ($this, type) {
+                    if (type !== 'accept') return;
+                    $.ajax({
+                        url: '/schedule/api/active/version_schedule/' + version_id + '/',
+                        type: 'DELETE',
+                        dataType: 'json',
+                        beforeSend: function (XHR) { XHR.setRequestHeader('X-CSRFToken', CSRFMIDDLEWARETOKEN); },
+                        success: function () {
+                            if (parentVerId) {
+                                window.location.href = '/schedule/item_profile/' + parentVerId + '/';
+                            } else {
+                                window.location.href = '/schedule/manage_schedule/';
+                            }
+                        },
+                        error: function () {
+                            Lobibox.notify('error', { title: '刪除失敗', msg: '無法刪除此分項子網圖，請稍後再試。' });
+                        }
+                    });
+                }
+            });
+        });
+
+        // Clone an existing sub-schedule into its next version (vN+1)
+        $(document).on('click', '.js-wbs-clone-sub', function () {
+            if (!activeWbsItemId) return;
+            var cloneSubId = $(this).data('sub-id');
+            var $btn = $(this).prop('disabled', true);
+            $.ajax({
+                url: '/schedule/api/active/scheduleitem/' + activeWbsItemId + '/sub_schedules/',
+                type: 'POST',
+                data: JSON.stringify({ clone_version_id: cloneSubId }),
+                contentType: 'application/json',
+                dataType: 'json',
+                beforeSend: function (XHR) { XHR.setRequestHeader('X-CSRFToken', CSRFMIDDLEWARETOKEN); },
+                success: function (res) {
+                    if (res && res.url) {
+                        window.location.href = res.url;
+                    }
+                },
+                error: function () {
+                    $btn.prop('disabled', false);
+                    Lobibox.notify('error', { title: '建立失敗', msg: '無法複製分項新版本。' });
+                }
+            });
+        });
+
         // Segmented tabs (zero popups!)
-        $('#tab-cpm').on('click', function () { switchView('cpm'); });
+        $('#tab-wbs').on('click', function () { switchView('wbs'); });
+        $('#tab-cpm').on('click', function () {
+            if (activeView === 'wbs' && wbsPlanner && wbsPlanner.hasUnsavedEdits()) {
+                wbsPlanner.savePendingEdits(function () { switchView('cpm'); });
+            } else {
+                switchView('cpm');
+            }
+        });
         $('#tab-gantt').on('click', function () { switchView('gantt'); });
 
-        // S-curve tab: only trigger Chart.js fetch when CPM is locked
-        if (!IS_CPM_LOCKED) {
-            $('#draw_s_curve').off('click');
-        }
-        $('#draw_s_curve').on('click', function () {
-            if (!IS_CPM_LOCKED || getDuration() > 0) {
+        // Step 0 WBS Toolbar actions
+        $('#wbs-save-all-btn').on('click', function () {
+            var planner = ensureWbsPlanner();
+            if (planner) planner.savePendingEdits();
+        });
+        $('#wbs-refresh-btn').on('click', function () {
+            var planner = ensureWbsPlanner();
+            if (planner) {
+                wbsLoaded = true;
+                planner.load();
+            }
+        });
+        $('#wbs-go-step1-btn').on('click', function () {
+            if (wbsPlanner && wbsPlanner.hasUnsavedEdits()) {
+                wbsPlanner.savePendingEdits(function () { switchView('cpm'); });
+            } else {
+                switchView('cpm');
+            }
+        });
+
+        // WBS JSON Import Modal (File upload / Paste / Load Template)
+        $('#wbs-import-file-input').on('change', function () {
+            var file = this.files && this.files[0];
+            if (!file) return;
+            $('#wbs-import-file-name').text(file.name);
+            var reader = new FileReader();
+            reader.onload = function (ev) {
+                $('#wbs-import-json-text').val(ev.target.result || '');
+            };
+            reader.readAsText(file, 'utf-8');
+        });
+        $('#wbs-load-sample-btn').on('click', function () {
+            var $btn = $(this).prop('disabled', true);
+            $.ajax({
+                url: '/schedule/make_json_scheduleitem/' + version_id + '/?format=wbs_template',
+                type: 'GET',
+                dataType: 'text',
+                success: function (txt) {
+                    $('#wbs-import-json-text').val(txt);
+                    $('#wbs-import-file-name').text('已載入目前專案精簡 WBS 範本');
+                    $btn.prop('disabled', false);
+                },
+                error: function () {
+                    $btn.prop('disabled', false);
+                    Lobibox.notify('error', { title: '載入失敗', msg: '無法取得 WBS 範本 JSON' });
+                }
+            });
+        });
+        $('#wbs-import-submit-btn').on('click', function () {
+            var raw = String($('#wbs-import-json-text').val() || '').trim();
+            if (!raw) {
+                Lobibox.notify('warning', { title: '提示', msg: '請先貼上或選擇欲匯入的 JSON 內容。' });
+                return;
+            }
+            var planner = ensureWbsPlanner();
+            if (!planner) return;
+            var $btn = $(this).prop('disabled', true);
+            planner.importJsonText(raw, function () {
+                $btn.prop('disabled', false);
+                var modalInst = bootstrap.Modal.getInstance(document.getElementById('wbs_import_json_modal'));
+                if (modalInst) modalInst.hide();
+                window.location.href = window.location.pathname + '?tab=wbs';
+            });
+            setTimeout(function () { $btn.prop('disabled', false); }, 3000);
+        });
+
+        // Detach legacy Chart.js click handler from item_gantt.js and mount Step 3 Result Studio
+        $('#draw_s_curve').off('click').on('click', function () {
+            if (!IS_CPM_LOCKED || !IS_GANTT_LOCKED || getDuration() > 0) {
                 switchView('scurve');
             }
         });
 
         $('.js-back-to-cpm').on('click', function () { switchView('cpm'); });
+        $('.js-go-to-gantt').on('click', function () { switchView('gantt'); });
 
         // Toggle same GoJS diagram between Read-Only View Mode and Edit Mode
         $('#btn-toggle-editor').on('click', function () {
             setEditMode(!isEditingCpm);
         });
 
-        // Lock / Unlock confirm buttons
+        // Step 1 & Step 2 Lock / Unlock confirm buttons
         $('#confirm-lock-cpm-btn').on('click', function () {
             toggleCpmLock('lock', 'gantt');
         });
         $('#confirm-unlock-cpm-btn').on('click', function () {
             toggleCpmLock('unlock', 'cpm');
+        });
+        $('#gantt_lock_confirm_modal').on('show.bs.modal', function () {
+            $('#gantt-lock-dirty-warning').toggle(ganttHasUnsavedChanges);
+            $('#confirm-lock-gantt-btn').prop('disabled', ganttHasUnsavedChanges);
+        });
+        $('#confirm-lock-gantt-btn').on('click', function () {
+            toggleGanttLock('lock', 'scurve');
+        });
+        $('#confirm-unlock-gantt-btn').on('click', function () {
+            toggleGanttLock('unlock', 'gantt');
         });
         $('#go-fix-cpm-btn').on('click', function () {
             switchView('cpm');
@@ -803,10 +2238,15 @@
             postToCpm({ type: 'cpm:auto-layout' });
         });
 
-        // Support ?tab=gantt redirect right after locking CPM
+        // Support ?tab=wbs, ?tab=gantt, or ?tab=scurve redirect
         var params = new URLSearchParams(window.location.search);
-        if (params.get('tab') === 'gantt' && IS_CPM_LOCKED) {
+        var initTab = params.get('tab');
+        if (initTab === 'wbs') {
+            switchView('wbs');
+        } else if (initTab === 'gantt' && IS_CPM_LOCKED) {
             switchView('gantt');
+        } else if (initTab === 'scurve' && IS_CPM_LOCKED && IS_GANTT_LOCKED) {
+            switchView('scurve');
         }
     });
 })();

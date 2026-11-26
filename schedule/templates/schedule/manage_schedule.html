@@ -87,36 +87,95 @@
 
 {% verbatim %}
 <script type="text/x-jquery-tmpl" id="version_obj">
-    <div id="tr_${id}" class="search-item sc-draft-card row align-items-center mx-0" row_id="${id}" data-mode="${schedule_setting_type}">
-        <div class="col-md-11 col-10 px-1">
-            <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
-                <span class="badge rounded-pill bg-light text-secondary border">#${sort}</span>
-                <a title="${project_name}" class="sc-draft-title" row_id="${id}" href="/schedule/item_profile/${id}/" name="project_name">${project_name}</a>
-                {{if schedule_setting_type == 1}}
-                    <span class="sc-pill sc-pill-cpm">CPM要徑</span>
-                {{else schedule_setting_type == 2}}
-                    <span class="sc-pill sc-pill-gantt">甘特圖</span>
-                {{else}}
-                    <span class="sc-pill sc-pill-range">${schedule_setting_type__name}</span>
+    <div id="tr_${id}" class="search-item sc-draft-card mx-0" row_id="${id}" data-mode="${schedule_setting_type}">
+        <div class="row align-items-center mx-0">
+            <div class="col-md-11 col-10 px-1">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                    <span class="badge rounded-pill bg-light text-secondary border">#${sort}</span>
+                    {{if parent_item_id}}
+                        <span class="badge rounded-pill bg-info-subtle text-info-emphasis border border-info-subtle">WBS分項</span>
+                    {{/if}}
+                    <a title="${project_name}" class="sc-draft-title" row_id="${id}" href="/schedule/item_profile/${id}/" name="project_name">${project_name}</a>
+                    <span class="badge rounded-pill bg-dark-subtle text-dark">v${version_number}{{if version_count > 1}} / 共${version_count}版{{/if}}</span>
+                    {{if schedule_setting_type == 1}}
+                        <span class="sc-pill sc-pill-cpm">CPM要徑</span>
+                        {{if stage_code == 'done'}}
+                            <span class="badge rounded-pill bg-success-subtle text-success border border-success-subtle">${stage_label}</span>
+                        {{else stage_code == 'step2'}}
+                            <span class="badge rounded-pill bg-primary-subtle text-primary border border-primary-subtle">${stage_label}</span>
+                        {{else}}
+                            <span class="badge rounded-pill bg-warning-subtle text-warning-emphasis border border-warning-subtle">${stage_label}</span>
+                        {{/if}}
+                    {{else schedule_setting_type == 2}}
+                        <span class="sc-pill sc-pill-gantt">甘特圖</span>
+                    {{else}}
+                        <span class="sc-pill sc-pill-range">${schedule_setting_type__name}</span>
+                    {{/if}}
+                    <span class="sc-pill bg-light text-dark border">目標工期 ${duration} 天</span>
+                    {{if sub_schedule_count && sub_schedule_count > 0}}
+                        <button type="button" class="btn btn-sm sc-tree-toggle-btn js-toggle-sub-tree" data-target="#sub-tree-${id}">
+                            <span class="material-icons" style="font-size:15px;">account_tree</span>
+                            <span>${sub_schedule_count} 個分項網圖</span>
+                            <span class="material-icons js-tree-chevron" style="font-size:16px;">expand_less</span>
+                        </button>
+                    {{/if}}
+                </div>
+                <div class="sc-draft-meta">
+                    {{if wbs_parent_version_id}}
+                        <span><i class="material-icons">subdirectory_arrow_right</i> 隸屬母進度：<a href="/schedule/item_profile/${wbs_parent_version_id}/" class="text-decoration-none fw-semibold">${wbs_parent_version_name}</a>（節點：${parent_item_name}）</span>
+                    {{/if}}
+                    <span><i class="material-icons">event</i> 建立：${create_time}（${create_user__name}）</span>
+                    <span><i class="material-icons">update</i> 更新：${update_time}（${update_user__name}）</span>
+                </div>
+                {{if version_family && version_family.length > 1}}
+                <div class="d-flex flex-wrap align-items-center gap-1 mt-2">
+                    <span class="small text-secondary fw-semibold me-1">版本切換：</span>
+                    {{each(idx, vf) version_family}}
+                        <a href="/schedule/item_profile/${vf.id}/" class="sc-tree-ver-chip {{if vf.is_latest}}border-primary text-primary fw-bold{{/if}}" title="開啟 v${vf.version_number}">
+                            v${vf.version_number}{{if vf.is_latest}} 最新{{/if}}（${vf.stage_label}）
+                        </a>
+                    {{/each}}
+                </div>
                 {{/if}}
-                <span class="sc-pill bg-light text-dark border">目標工期 ${duration} 天</span>
             </div>
-            <div class="sc-draft-meta">
-                <span><i class="material-icons">event</i> 建立：${create_time}（${create_user__name}）</span>
-                <span><i class="material-icons">update</i> 更新：${update_time}（${update_user__name}）</span>
+            <div class="col-md-1 col-2 d-flex align-items-center justify-content-end gap-2 px-1">
+                <a href="/schedule/item_profile/${id}/" class="btn sc-btn sc-btn-soft d-none d-lg-inline-flex py-1 px-2" title="開啟編輯">
+                    <span class="material-icons" style="font-size:18px;">open_in_new</span>
+                </a>
+                <a title="移除草稿" row_id="${id}"
+                   data-bs-toggle="tooltip" data-bs-placement="top" row_name=""
+                   class="delete_version sc-delete-btn pointer"
+                >
+                    <span class="material-icons" style="font-size:20px;">delete_outline</span>
+                </a>
             </div>
         </div>
-        <div class="col-md-1 col-2 d-flex align-items-center justify-content-end gap-2 px-1">
-            <a href="/schedule/item_profile/${id}/" class="btn sc-btn sc-btn-soft d-none d-lg-inline-flex py-1 px-2" title="開啟編輯">
-                <span class="material-icons" style="font-size:18px;">open_in_new</span>
-            </a>
-            <a title="移除草稿" row_id="${id}"
-               data-bs-toggle="tooltip" data-bs-placement="top" row_name=""
-               class="delete_version sc-delete-btn pointer"
-            >
-                <span class="material-icons" style="font-size:20px;">delete_outline</span>
-            </a>
+
+        {{if sub_schedules && sub_schedules.length > 0}}
+        <div class="sc-tree-children" id="sub-tree-${id}">
+            {{each(idx, sub) sub_schedules}}
+            <div class="sc-tree-child-row">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <span class="material-icons text-primary" style="font-size:16px;">subdirectory_arrow_right</span>
+                    <span class="badge rounded-pill bg-light text-secondary border">分項節點：${sub.parent_item_name}</span>
+                    <a href="/schedule/item_profile/${sub.id}/" class="fw-bold text-dark text-decoration-none">${sub.project_name}</a>
+                    <span class="badge rounded-pill bg-dark-subtle text-dark">v${sub.version_number}{{if sub.version_count > 1}} / 共${sub.version_count}版{{/if}}</span>
+                    <span class="badge rounded-pill {{if sub.stage_code == 'done'}}bg-success-subtle text-success{{else sub.stage_code == 'step2'}}bg-primary-subtle text-primary{{else}}bg-warning-subtle text-warning-emphasis{{/if}}">${sub.stage_label}</span>
+                    <span class="small text-secondary">工期 ${sub.duration} 天（母工期 ${sub.parent_item_duration} 天）</span>
+                    {{if sub.overrun_days > 0}}
+                        <span class="badge rounded-pill bg-danger-subtle text-danger">超期 +${sub.overrun_days} 天</span>
+                    {{/if}}
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <a href="/schedule/item_profile/${sub.id}/" class="btn btn-sm sc-btn-outline-clean sc-btn-sm py-0 px-2">開啟分項</a>
+                    <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 js-delete-sub-version" data-sub-id="${sub.id}" data-sub-name="${sub.project_name} (v${sub.version_number})" title="刪除此分項子網圖">
+                        <span class="material-icons" style="font-size:15px; vertical-align:middle;">delete_outline</span>
+                    </button>
+                </div>
+            </div>
+            {{/each}}
         </div>
+        {{/if}}
     </div>
 </script>
 {% endverbatim %}

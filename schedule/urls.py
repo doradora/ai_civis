@@ -11,11 +11,16 @@ urlpatterns = [
     # Tastypie 相容 REST API（/schedule/api/active/...）
     re_path(r'^api/active/version_schedule/release/?$', api.version_schedule_release, name='api_release'),
     re_path(r'^api/active/version_schedule/(?P<pk>[0-9]+)/toggle_cpm_lock/?$', api.version_schedule_toggle_cpm_lock, name='api_toggle_cpm_lock'),
+    re_path(r'^api/active/version_schedule/(?P<pk>[0-9]+)/toggle_gantt_lock/?$', api.version_schedule_toggle_gantt_lock, name='api_toggle_gantt_lock'),
+    re_path(r'^api/active/version_schedule/(?P<pk>[0-9]+)/wbs_tree/?$', api.version_schedule_wbs_tree, name='api_version_wbs_tree'),
+    re_path(r'^api/active/version_schedule/(?P<pk>[0-9]+)/wbs_action/?$', api.version_schedule_wbs_action, name='api_version_wbs_action'),
+    re_path(r'^api/active/version_schedule/(?P<pk>[0-9]+)/import_wbs_json/?$', api.version_schedule_import_wbs_json, name='api_version_import_wbs_json'),
     re_path(r'^api/active/version_schedule/?$', api.version_schedule_list, name='api_version_schedule_list'),
     re_path(r'^api/active/version_schedule/(?P<pk>[0-9]+)/?$', api.version_schedule_detail, name='api_version_schedule_detail'),
 
     re_path(r'^api/active/scheduleitem/change_item_priority/?$', api.scheduleitem_change_item_priority, name='api_change_item_priority'),
     re_path(r'^api/active/scheduleitem/get_delete_sub_ids/?$', api.scheduleitem_get_delete_sub_ids, name='api_get_delete_sub_ids'),
+    re_path(r'^api/active/scheduleitem/(?P<pk>[0-9]+)/sub_schedules/?$', api.scheduleitem_sub_schedules, name='api_scheduleitem_sub_schedules'),
     re_path(r'^api/active/scheduleitem/?$', api.scheduleitem_list, name='api_scheduleitem_list'),
     re_path(r'^api/active/scheduleitem/(?P<pk>[0-9]+)/?$', api.scheduleitem_detail, name='api_scheduleitem_detail'),
 

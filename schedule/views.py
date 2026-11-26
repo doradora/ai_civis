@@ -136,6 +136,24 @@ def item_profile(R, version_id):
         parsed_links = []
 
     cpm_lock_checklist = version.get_cpm_lock_checklist() if version.schedule_setting_type == 1 else None
+    wbs_ancestors = version.get_wbs_ancestors()
+    raw_versions = version.get_versions()
+    latest_ver_id = raw_versions[-1][1].id if raw_versions else version.id
+    version_family = [
+        {
+            'id': v.id,
+            'number': num,
+            'name': v.display_name,
+            'duration': int(v.duration or 0),
+            'stage': v.get_stage_info(),
+            'is_current': v.id == version.id,
+            'is_latest': v.id == latest_ver_id,
+            'update_time': v.update_time,
+        }
+        for num, v in reversed(raw_versions)
+    ]
+    current_version_number = version.get_version_number()
+    parent_overrun_days = version.get_parent_overrun_days()
 
     if version.schedule_setting_type == 1:
         t = join('schedule', 'item_cpm.html')
@@ -159,6 +177,10 @@ def item_profile(R, version_id):
             'cpm_links_json': json.dumps(parsed_links, ensure_ascii=False),
             'cpm_lock_checklist': cpm_lock_checklist,
             'cpm_lock_checklist_json': json.dumps(cpm_lock_checklist or {}, ensure_ascii=False),
+            'wbs_ancestors': wbs_ancestors,
+            'version_family': version_family,
+            'current_version_number': current_version_number,
+            'parent_overrun_days': parent_overrun_days,
         },
     )
 
@@ -276,12 +298,15 @@ def gantt_diagram(R):
     end_date = start_date + datetime.timedelta(days=max(1, int(version.duration or 30)) + 30)
     pre_start_date = start_date - datetime.timedelta(days=1)
 
+    is_gantt_locked = bool(version.schedule_setting_type == 1 and version.gantt_locked)
+
     return render(
         R,
         join('schedule', 'gantt_diagram.html'),
         {
             'project': project,
-            'edit': True,
+            'edit': not is_gantt_locked,
+            'gantt_locked': is_gantt_locked,
             'embed': R.GET.get('embed') == '1',
             'start_date': start_date,
             'pre_start_date': pre_start_date,
@@ -496,130 +521,23 @@ def create_sch_item_by_excel(R):
 
 @csrf_exempt
 def create_sch_item_by_json(R):
-    """使用精靈檔 json / scpm 檔案製造預定進度工項"""
-    dir_kind = get_dir_kind()
-    item_kind = get_item_kind()
+    """使用 JSON / SCPM 檔案（支援舊版 jsrcm、2.0-wbs 整包與 wbs-import-1.0 樹狀）製造預定進度工項"""
+    from schedule.wbs_io import import_json_into_version
 
     file = R.FILES.get('file', None)
-    if not file:
+    json_text = R.POST.get('json_text', '')
+    if not file and not json_text:
         return JsonResponse({'status': False, 'msg': '未上傳檔案'})
 
-    data = json.loads(file.read().decode('utf-8'))
+    try:
+        raw_str = file.read().decode('utf-8') if file else json_text
+        data = json.loads(raw_str)
+    except Exception as exc:
+        return JsonResponse({'status': False, 'msg': f'JSON 解析失敗：{exc}'})
+
     version = Version_Schedule.objects.get(id=R.POST.get('version_id', None))
-    version.create_root_item()
-    root_item = version.scheduleitem_set.filter(uplevel=None).order_by('id').first()
-    from_schedule_setting_type = data.get('schedule_setting_type', 0)
-
-    if 'items' not in data or 'start_end_node' not in data:
-        return JsonResponse({'status': False, 'msg': '匯入失敗，檔案格式錯誤'})
-
-    version.scheduleitem_set.all().exclude(uplevel=None).delete()
-
-    id_mapping = {}
-    cpm_id_mapping = {}
-    for level_n, level_item in enumerate(data['items']):
-        c_objects = []
-        uplevel_ids = []
-        for obj in level_item:
-            obj = dict(obj)
-            if from_schedule_setting_type == 1 and version.schedule_setting_type != 1:
-                obj['ls'] += 1
-                obj['es'] = obj['ls']
-                obj['ef'] = obj['lf']
-            elif from_schedule_setting_type != 1 and version.schedule_setting_type == 1:
-                obj['es'] -= 1
-                obj['ls'] = obj['es']
-                obj['lf'] = obj['ef']
-
-            row = ScheduleItem(
-                version=version,
-                is_main_item=obj.get('is_main_item', True),
-                name=obj['name'],
-                unit_price=decimal.Decimal(str(obj['unit_price'])),
-                es=obj['es'],
-                ef=obj['ef'],
-                ls=obj['ls'],
-                lf=obj['lf'],
-                kind=dir_kind if obj['kind'] == 10 else item_kind,
-                uplevel=root_item if level_n == 0 else id_mapping[obj['uplevel']],
-                priority=obj['priority'],
-                link=obj.get('link', '[]'),
-                cp=obj.get('cp', False),
-                duration=obj.get('duration', 1),
-                location=obj.get('location', ''),
-            )
-            if row.uplevel.id not in uplevel_ids:
-                uplevel_ids.append(row.uplevel.id)
-            c_objects.append(row)
-
-        ScheduleItem.objects.bulk_create(c_objects)
-        created_rows = list(
-            version.scheduleitem_set.filter(uplevel_id__in=uplevel_ids).order_by('uplevel__priority', 'priority', 'id')
-        )
-        for n, i in enumerate(created_rows):
-            if n < len(level_item):
-                id_mapping[level_item[n]['id']] = i
-                if 'cpm_item__id' in level_item[n]:
-                    cpm_id_mapping[level_item[n]['cpm_item__id']] = i
-
-    with transaction.atomic():
-        for i in version.scheduleitem_set.all().exclude(link='[]'):
-            new_link = []
-            for link in i.get_link():
-                src = int(link.get('source', 0) or 0)
-                tgt = int(link.get('target', 0) or 0)
-                if src in id_mapping and tgt in id_mapping:
-                    link['source'] = id_mapping[src].id
-                    link['target'] = id_mapping[tgt].id
-                    new_link.append(link)
-            i.link = json.dumps(new_link)
-            i.save()
-
-    version.start_end_node = data['start_end_node']
-    new_cpm_link = []
-    if version.schedule_setting_type == 1:
-        for i in json.loads(data.get('cpm_link', '[]') or '[]'):
-            link_copy = dict(i)
-            if link_copy['from'] not in ['start', 'end']:
-                fid = int(link_copy['from'])
-                if fid in cpm_id_mapping:
-                    link_copy['from'] = cpm_id_mapping[fid].id
-                elif fid in id_mapping:
-                    link_copy['from'] = id_mapping[fid].id
-                else:
-                    continue
-            if link_copy['to'] not in ['start', 'end']:
-                tid = int(link_copy['to'])
-                if tid in cpm_id_mapping:
-                    link_copy['to'] = cpm_id_mapping[tid].id
-                elif tid in id_mapping:
-                    link_copy['to'] = id_mapping[tid].id
-                else:
-                    continue
-            new_cpm_link.append(link_copy)
-
-        version.cpm_link = json.dumps(new_cpm_link)
-
-        if data.get('version_file', ''):
-            f = data.get('version_file', '')
-            ext = 'jpg'
-            base64_content = base64.b64decode(f)
-            output = BytesIO()
-            output.write(base64_content)
-            output.seek(0)
-            timestamp = datetime.datetime.now().strftime('%H_%M_%S_%f')
-            frame = InMemoryUploadedFile(output, None, f'{timestamp}.jpg', 'image/jpeg', len(base64_content), None)
-            version.file.save(f'{version.id}.{ext}', frame, save=False)
-        else:
-            version.file = None
-    else:
-        version.cpm_link = '[]'
-        version.file = None
-
-    root_item.update_es_ef()
-    version.need_recount_esef = False
-    version.save()
-    return JsonResponse({'status': True})
+    result = import_json_into_version(version, data, user=R.user)
+    return JsonResponse(result)
 
 
 @csrf_exempt
@@ -821,16 +739,12 @@ def api_cpm(R):
 
     all_key = [i['key'] for i in nodeDataArray]
 
-    # 偵測是否有完整設定結尾
-    check_end_keys = all_key[:]
-    for i in linkDataArray:
-        if i['mode'] in ['FS', 'FF'] and i['from'] in check_end_keys:
-            check_end_keys.remove(i['from'])
-
-    if check_end_keys:
-        for i in nodeDataArray:
-            if i['key'] == check_end_keys[0]:
-                return JsonResponse({'status': False, 'msg': f"有工項未設定結尾項目：【 {i['text']} 】"})
+    # 偵測是否有完整設定結尾（O(V + E) set 查找）
+    linked_from_keys = {i['from'] for i in linkDataArray if i.get('mode') in ('FS', 'FF')}
+    missing_end_key = next((k for k in all_key if k not in linked_from_keys), None)
+    if missing_end_key is not None:
+        missing_row = nodeDataArray_dict.get(missing_end_key)
+        return JsonResponse({'status': False, 'msg': f"有工項未設定結尾項目：【 {missing_row['text']} 】"})
 
     link_mapping = {}
     start_node_min_num = {}
@@ -849,68 +763,100 @@ def api_cpm(R):
 
     linkDataArray = new_linkDataArray
 
-    def link_behind(gene_list):
-        next_gene_list = []
-        for gene in gene_list:
-            last_key = gene[-1]
-            if last_key not in link_mapping:
-                continue
-            for link_key in link_mapping[last_key]:
-                next_gen = gene[:] + [link_key]
-                if link_key in gene:
-                    return {'status': False, 'msg': f'連結關係錯誤，有循環工項設定：【 {next_gen} 】'}, []
-                next_gene_list.append(next_gen)
-        return {'status': True}, next_gene_list
+    # O(V + E) 3-color iterative DFS cycle detection (replaces legacy O(2^N) path enumeration)
+    color = {}  # 0=unvisited, 1=visiting, 2=done
+    parent_map = {}
+    for start_node in list(link_mapping.keys()):
+        if color.get(start_node, 0) != 0:
+            continue
+        stack = [(start_node, 0)]
+        color[start_node] = 1
+        while stack:
+            u, idx = stack[-1]
+            neighbors = link_mapping.get(u, ())
+            if idx < len(neighbors):
+                stack[-1] = (u, idx + 1)
+                v = neighbors[idx]
+                v_state = color.get(v, 0)
+                if v_state == 1:
+                    # Reconstruct exact cycle path [v, ..., u, v]
+                    cycle_path = [v]
+                    cur = u
+                    while cur != v and cur in parent_map:
+                        cycle_path.append(cur)
+                        cur = parent_map[cur]
+                    cycle_path.append(v)
+                    cycle_path.reverse()
+                    return JsonResponse({'status': False, 'msg': f'連結關係錯誤，有循環工項設定：【 {cycle_path} 】'})
+                if v_state == 0:
+                    color[v] = 1
+                    parent_map[v] = u
+                    stack.append((v, 0))
+            else:
+                color[u] = 2
+                stack.pop()
 
-    for key in link_mapping:
-        check_round = [[key]]
-        while check_round:
-            check_status, check_round = link_behind(check_round)
-            if not check_status['status']:
-                return JsonResponse(check_status)
-
-    # 進行工期自動展延調整
+    # 進行工期自動展延調整（O(V + E) DAG 動態規劃求最長要徑，取代舊版指數窮舉）
     if fix_duration:
         max_lf = max([i['lf'] for i in nodeDataArray])
         if max_lf >= fix_duration:
             return JsonResponse({'status': False, 'msg': '欲調整工期小於目前最長工期，系統無法自動調整'})
 
-        def get_all_link_behind(gene_list):
-            complete_gene_list = []
-            next_gene_list = []
-            for gene in gene_list:
-                last_key = gene[-1]
-                if last_key not in link_mapping:
-                    complete_gene_list.append(gene)
-                    continue
-                for link_key in link_mapping[last_key]:
-                    next_gene_list.append(gene[:] + [link_key])
-            return complete_gene_list, next_gene_list
+        all_from_set = {row['from'] for row in linkDataArray}
+        all_to_set = {row['to'] for row in linkDataArray}
+        start_keys = set(all_key) - all_to_set
+        end_keys = set(all_key) - all_from_set
+        cp_keys = {row['key'] for row in nodeDataArray if row.get('cp')}
 
-        all_from_key = [row['from'] for row in linkDataArray]
-        all_to_key = [row['to'] for row in linkDataArray]
-        start_keys = list(set(all_key) - set(all_to_key))
-        end_keys = list(set(all_key) - set(all_from_key))
-        cp_keys = [row['key'] for row in nodeDataArray if row.get('cp')]
-        all_path = []
-        for key in start_keys:
-            check_round = [[key]]
-            while check_round:
-                complete_check_round, check_round = get_all_link_behind(check_round)
-                if complete_check_round:
-                    all_path += complete_check_round
+        # Topological order over cp_keys subgraph
+        cp_indeg = {k: 0 for k in cp_keys}
+        cp_adj = {k: [] for k in cp_keys}
+        for row in linkDataArray:
+            u, v = row['from'], row['to']
+            if u in cp_keys and v in cp_keys:
+                cp_adj[u].append(v)
+                cp_indeg[v] += 1
+
+        cp_queue = [k for k, deg in cp_indeg.items() if deg == 0]
+        cp_topo = []
+        q_head = 0
+        while q_head < len(cp_queue):
+            u = cp_queue[q_head]
+            q_head += 1
+            cp_topo.append(u)
+            for v in cp_adj[u]:
+                cp_indeg[v] -= 1
+                if cp_indeg[v] == 0:
+                    cp_queue.append(v)
+
+        dp_len = {k: (1 if k in start_keys else -1) for k in cp_keys}
+        dp_prev = {}
+        for u in cp_topo:
+            if dp_len[u] < 0:
+                continue
+            for v in cp_adj[u]:
+                if dp_len[u] + 1 > dp_len[v]:
+                    dp_len[v] = dp_len[u] + 1
+                    dp_prev[v] = u
+
+        best_end = None
+        best_len = 0
+        for k in (cp_keys & end_keys):
+            if dp_len.get(k, -1) > best_len:
+                best_len = dp_len[k]
+                best_end = k
 
         cp_path = []
-        cp_path_len = []
-        for path in all_path:
-            is_cps = [key in cp_keys for key in path]
-            if False not in is_cps and path[-1] in end_keys:
-                cp_path.append(path)
-                cp_path_len.append(len(path))
+        if best_end is not None:
+            path = []
+            cur = best_end
+            while cur is not None:
+                path.append(cur)
+                cur = dp_prev.get(cur)
+            path.reverse()
+            cp_path = [path]
 
         if cp_path:
-            max_cp_path_num = max(cp_path_len)
-            cp_path = [cp_path[cp_path_len.index(max_cp_path_num)]]
             delta_days = fix_duration - max_lf
             max_row = nodeDataArray_dict[cp_path[0][0]]
             for cp in cp_path:
@@ -989,21 +935,35 @@ def api_cpm(R):
         x[k].succ.append([k, 'end', 'FS', int(end_node_min_num[k])])
         x['end'].pre.append([k, 'end', 'FS', int(end_node_min_num[k])])
 
-    def all_in(a, A):
-        return all(i in A for i in a)
+    # O(V + E) Kahn's topological sort (replaces legacy O(V^3) loop)
+    pre_sets = {k: {e[0] for e in x[k].pre} for k in all_key}
+    succ_adj = {k: set() for k in all_key}
+    succ_adj['start'] = set()
+    indegree = {}
+    for k in all_key:
+        indegree[k] = len(pre_sets[k])
+        for p in pre_sets[k]:
+            if p in succ_adj:
+                succ_adj[p].add(k)
 
-    y = {k: [e[0] for e in x[k].pre] for k in all_key}
     do_order = ['start']
+    ready = []
+    for nxt in sorted(succ_adj['start'], key=lambda k: str(k)):
+        indegree[nxt] -= 1
+        if indegree[nxt] == 0:
+            ready.append(nxt)
 
-    for rep in range(len(x) + 1):
-        for k in list(y.keys()):
-            if all_in(y[k], do_order):
-                do_order.append(k)
-                del y[k]
-                break
-        if len(y) == 0:
-            break
-    if len(y) > 0:
+    r_head = 0
+    while r_head < len(ready):
+        cur_k = ready[r_head]
+        r_head += 1
+        do_order.append(cur_k)
+        for nxt in sorted(succ_adj[cur_k], key=lambda k: str(k)):
+            indegree[nxt] -= 1
+            if indegree[nxt] == 0:
+                ready.append(nxt)
+
+    if len(do_order) - 1 < len(all_key):
         return JsonResponse({'status': False, 'msg': '連結關係設定錯誤'})
 
     do_order.append('end')
@@ -1056,7 +1016,7 @@ def api_cpm(R):
 
     result_by_key = {r['key']: r for r in result if r['key'] not in ('start', 'end')}
     with transaction.atomic():
-        items = ScheduleItem.objects.filter(id__in=[k for k in result_by_key if isinstance(k, int)])
+        items = list(ScheduleItem.objects.filter(id__in=[k for k in result_by_key if isinstance(k, int)]))
         for i in items:
             row = result_by_key[i.id]
             i.es = int(row['es'])
@@ -1064,7 +1024,8 @@ def api_cpm(R):
             i.ls = int(row['ls'])
             i.lf = int(row['lf'])
             i.cp = (row['es'] == row['ls'] and row['ef'] == row['lf'])
-            i.save()
+        if items:
+            ScheduleItem.objects.bulk_update(items, ['es', 'ef', 'ls', 'lf', 'cp'])
 
     return JsonResponse({'status': True, 'result': result})
 
@@ -1161,59 +1122,34 @@ def make_excel_scheduleitem(R, version_id):
 
 
 def make_json_scheduleitem(R, version_id):
+    from schedule.wbs_io import build_wbs_import_template, export_version_json_payload
+
     version = Version_Schedule.objects.get(id=version_id)
-    version.create_root_item()
-    root_item = version.scheduleitem_set.filter(uplevel=None).order_by('id').first()
-    if version.need_recount_esef:
-        root_item.update_es_ef()
-        version.need_recount_esef = False
-        version.save()
-
     project = version.project
-    data = {'items': []}
-    subs = root_item.schedule_scheduleitem_uplevel.all().order_by('priority', 'id')
-    while subs.exists():
-        tmp = []
-        for i in subs:
-            dur = i.duration if version.schedule_setting_type == 1 else (i.ef - i.es + 1)
-            tmp.append({
-                'id': i.id,
-                'is_main_item': i.is_main_item,
-                'name': i.name,
-                'symbol': i.read_level_symbol(),
-                'es': i.es,
-                'ef': i.ef,
-                'ls': i.ls,
-                'lf': i.lf,
-                'kind': i.kind_id,
-                'unit_price': float(str(i.unit_price)),
-                'uplevel': i.uplevel_id,
-                'priority': i.priority,
-                'link': i.link,
-                'cp': i.cp,
-                'duration': dur,
-                'location': i.location,
-            })
-        data['items'].append(tmp)
-        subs = ScheduleItem.objects.filter(uplevel__in=subs).order_by('uplevel__priority', 'priority', 'id')
+    fmt = R.GET.get('format', '').strip()
+    include_sub = R.GET.get('include_sub') == '1'
 
-    if version.file and os.path.exists(version.get_file_path()):
-        with open(version.get_file_path(), 'rb') as f:
-            data['version_file'] = base64.encodebytes(f.read()).decode('utf-8')
+    if fmt == 'wbs_template':
+        data = build_wbs_import_template(version)
+        ext = 'json'
+        prefix = 'WBS架構範本'
+    else:
+        ext = R.GET.get('ext', 'json')
+        data = export_version_json_payload(
+            version,
+            include_sub_schedules=include_sub,
+            include_file=(not include_sub),
+        )
+        mode_label = ['---', 'CPM', '甘特', '區間'][int(version.schedule_setting_type or 0)]
+        prefix = f'WBS完整母子專案[{mode_label}]' if include_sub else f'精靈專用檔[{mode_label}]'
 
-    if version.schedule_setting_type == 1:
-        data['cpm_link'] = version.cpm_link
-    data['start_end_node'] = version.start_end_node
-    data['schedule_setting_type'] = version.schedule_setting_type
-
-    ext = R.GET.get('ext', 'json')
-    buf = BytesIO(json.dumps(data, ensure_ascii=False).encode('utf-8'))
+    indent = 2 if (fmt == 'wbs_template' or include_sub) else None
+    buf = BytesIO(json.dumps(data, ensure_ascii=False, indent=indent).encode('utf-8'))
     response = HttpResponse(buf.getvalue(), content_type='application/json')
     response['Content-Length'] = buf.getbuffer().nbytes
-    mode_label = ['---', 'CPM', '甘特', '區間'][int(version.schedule_setting_type or 0)]
     ts = version.create_time.strftime('%Y%m%d_%H%M%S') if version.create_time else str(version.id)
     pname = (project.name if project else version.project_name).replace(',', '')
-    response['Content-Disposition'] = _content_disposition_attachment(f'精靈專用檔[{mode_label}]-{ts}-{pname}.{ext}')
+    response['Content-Disposition'] = _content_disposition_attachment(f'{prefix}-{ts}-{pname}.{ext}')
     return response
 
 

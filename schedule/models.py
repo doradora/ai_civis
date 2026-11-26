@@ -82,6 +82,22 @@ class Version_Schedule(M.Model):
         (3, '簡易區間'),
     )
 
+    parent = M.ForeignKey(
+        'self',
+        verbose_name='母版本',
+        related_name='schedule_parent',
+        null=True,
+        blank=True,
+        on_delete=M.SET_NULL,
+    )
+    parent_item = M.ForeignKey(
+        'ScheduleItem',
+        verbose_name='所屬母工項節點',
+        related_name='sub_schedules',
+        null=True,
+        blank=True,
+        on_delete=M.SET_NULL,
+    )
     project = M.ForeignKey(
         Project,
         verbose_name='對應工程',
@@ -115,7 +131,8 @@ class Version_Schedule(M.Model):
     file = M.FileField(upload_to=_VERSION_SCHEDULE_FILE, null=True, blank=True)
     release_json = M.TextField(verbose_name='release json狀態', default='{}')
     cpm_release = M.BooleanField(verbose_name='CPM是否已發布(若更動為否)', default=False)
-    cpm_locked = M.BooleanField(verbose_name='CPM是否已鎖定(鎖定後才可使用甘特圖)', default=False)
+    cpm_locked = M.BooleanField(verbose_name='CPM是否已鎖定(鎖定後才可使用進度調整)', default=False)
+    gantt_locked = M.BooleanField(verbose_name='進度調整是否已鎖定(鎖定後才可檢視進度成果)', default=False)
     schedule_setting_type = M.IntegerField(
         verbose_name='預定進度設定方法',
         default=0,
@@ -144,6 +161,76 @@ class Version_Schedule(M.Model):
     def total_weight(self):
         total = self.scheduleitem_set.exclude(kind_id=10).aggregate(Sum('unit_price'))['unit_price__sum']
         return total or decimal.Decimal('0')
+
+    def get_versions(self):
+        """回傳同一預定進度之所有版本（完全相容 jsrcm Version_Schedule.get_versions）"""
+        main_version = self.parent if self.parent_id else self
+        children = list(main_version.schedule_parent.all().order_by('create_time', 'id'))
+        return [[1, main_version]] + [[n + 2, ver] for n, ver in enumerate(children)]
+
+    def get_last_version(self):
+        """回傳最新版本（相容 jsrcm）"""
+        return self.get_versions()[-1][1]
+
+    def get_version_number(self):
+        for num, ver in self.get_versions():
+            if ver.id == self.id:
+                return num
+        return 1
+
+    @property
+    def wbs_parent_version(self):
+        if self.parent_item_id and self.parent_item:
+            return self.parent_item.version
+        return None
+
+    def get_wbs_ancestors(self):
+        """由最頂層總預定進度向下回傳所有祖先 WBS 資訊，供麵包屑導覽使用。"""
+        ancestors = []
+        seen = {self.id}
+        cur = self
+        while cur.parent_item_id and cur.parent_item and cur.parent_item.version_id:
+            p_item = cur.parent_item
+            p_ver = p_item.version
+            if p_ver.id in seen:
+                break
+            seen.add(p_ver.id)
+            ancestors.append({
+                'version': p_ver,
+                'item': p_item,
+                'version_id': p_ver.id,
+                'version_name': p_ver.display_name,
+                'version_number': p_ver.get_version_number(),
+                'item_id': p_item.id,
+                'item_name': p_item.name,
+                'item_duration': int(p_item.duration or 0),
+                'item_weight': float(p_item.unit_price or 0),
+                'item_es': int(p_item.es or 0) + 1,
+                'item_ef': int(p_item.ef or 0),
+            })
+            cur = p_ver
+        ancestors.reverse()
+        return ancestors
+
+    def get_stage_info(self):
+        if self.schedule_setting_type != 1:
+            return {'code': 'normal', 'label': self.setting_type_name}
+        if self.cpm_locked and self.gantt_locked:
+            return {'code': 'done', 'label': '進度已定案'}
+        if self.cpm_locked:
+            return {'code': 'step2', 'label': '網圖已鎖定'}
+        return {'code': 'draft', 'label': '草稿'}
+
+    def get_parent_overrun_days(self):
+        if not self.parent_item_id or not self.parent_item:
+            return 0
+        parent_dur = int(self.parent_item.duration or 0)
+        if parent_dur <= 0:
+            return 0
+        leaf_items = list(self.scheduleitem_set.exclude(uplevel=None).exclude(kind_id=10))
+        cpm_max_day = max((int(i.lf or i.ef or 0) for i in leaf_items), default=0)
+        effective_dur = max(int(self.duration or 0), cpm_max_day)
+        return max(0, effective_dur - parent_dur)
 
     def get_cpm_lock_checklist(self):
         """檢查 CPM 網圖是否符合鎖定前置條件（鎖定後才開放甘特圖與 S 曲線）。"""
@@ -196,6 +283,7 @@ class Version_Schedule(M.Model):
         return {
             'can_lock': can_lock,
             'cpm_locked': bool(self.cpm_locked),
+            'gantt_locked': bool(self.gantt_locked),
             'checks': checks,
             'cpm_max_day': cpm_max_day,
             'duration': duration_val,
@@ -254,10 +342,15 @@ class Version_Schedule(M.Model):
             return self.project.contract_amount
         return 0
 
-    def new_version_copy_pre_item(self, pre_version):
-        """新增新預定進度複製前一個版本的資訊"""
+    def new_version_copy_pre_item(self, pre_version, carry_sub_schedules=True, _visited=None):
+        """新增新預定進度複製前一個版本的資訊，並自動遞迴攜帶各工項對應之最新分項子網圖（WBS 子 PDM）"""
         if not pre_version:
             return False
+        if _visited is None:
+            _visited = set()
+        if pre_version.id in _visited:
+            return False
+        _visited = _visited | {pre_version.id, self.id}
 
         dir_kind = get_dir_kind()
         pre_root_item = pre_version.scheduleitem_set.filter(uplevel=None).order_by('id').first()
@@ -354,6 +447,45 @@ class Version_Schedule(M.Model):
         self.file = pre_version.file
         self.start_end_node = pre_version.start_end_node
         self.save()
+
+        # 遞迴攜帶未變動工項所連結之分項子網圖（每個子網圖家族取最新版本複製到新工項下，確保 v1 與 v2 各自獨立不互相污染）
+        if carry_sub_schedules and pre_item_mapping:
+            old_item_ids = [int(k) for k in pre_item_mapping.keys() if k.isdigit()]
+            linked_subs = list(
+                Version_Schedule.objects.filter(parent_item_id__in=old_item_ids)
+                .order_by('create_time', 'id')
+            )
+            # 依 (parent_item_id, sub_family_root_id) 分組，取每組最新版本
+            sub_groups = {}
+            for s_ver in linked_subs:
+                fam_key = (s_ver.parent_item_id, s_ver.parent_id or s_ver.id)
+                sub_groups[fam_key] = s_ver  # 因已依 create_time, id 排序，最後一筆即最新版
+
+            for (old_pid, _fam_root), old_sub in sub_groups.items():
+                if old_sub.id in _visited:
+                    continue
+                new_parent_item = pre_item_mapping.get(str(old_pid))
+                if not new_parent_item:
+                    continue
+                new_sub = Version_Schedule.objects.create(
+                    parent=None,
+                    parent_item=new_parent_item,
+                    project=self.project or old_sub.project,
+                    project_name=old_sub.project_name or f'{self.display_name} - {new_parent_item.name}',
+                    schedule_setting_type=old_sub.schedule_setting_type,
+                    duration=old_sub.duration,
+                    cpm_release=old_sub.cpm_release,
+                    cpm_locked=old_sub.cpm_locked,
+                    gantt_locked=old_sub.gantt_locked,
+                    create_user=self.create_user or old_sub.create_user,
+                    update_user=self.update_user or old_sub.update_user,
+                )
+                new_sub.create_root_item()
+                new_sub.new_version_copy_pre_item(
+                    old_sub,
+                    carry_sub_schedules=True,
+                    _visited=_visited,
+                )
 
         return True
 

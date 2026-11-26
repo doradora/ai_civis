@@ -491,6 +491,48 @@ const cpmApp = new Vue({
                     $(go.TextBlock, // lateFinish
                         new go.Binding("text", "", function(d) { return d.key === "start" ? "0" : d.key !== 'end' && d.lateFinish ? d.lateFinish : d.lateFinish === undefined ? "0" : parseInt(d.lateFinish) < parseInt(vm.project_total_days) ? vm.project_total_days : d.lateFinish }),
                         { row: 3, column: 2, margin: 5, columnSpan: 1, textAlign: "center" }),
+                    // Row 4: WBS Sub-Schedule Status Strip (visible when this PDM node has linked sub-schedules)
+                    $(go.Panel, "Auto",
+                        new go.Binding("visible", "", function(d) { return Boolean(d.sub_schedule_count && d.sub_schedule_count > 0); }),
+                        {
+                            name: "WBS_SUB_BADGE",
+                            row: 4, column: 0, columnSpan: 3, stretch: go.GraphObject.Horizontal,
+                            margin: new go.Margin(2, 4, 4, 4),
+                            cursor: "pointer",
+                            click: function(e, obj) {
+                                e.handled = true;
+                                vm.open_sub_schedule(e, obj);
+                            }
+                        },
+                        $(go.Shape, "RoundedRectangle",
+                            new go.Binding("fill", "", function(d) {
+                                var sub = d.latest_sub_schedule;
+                                if (sub && sub.stage_code === 'done') return "#dcfce7";
+                                return "#dbeafe";
+                            }),
+                            new go.Binding("stroke", "", function(d) {
+                                var sub = d.latest_sub_schedule;
+                                if (sub && sub.stage_code === 'done') return "#16a34a";
+                                return "#2563eb";
+                            }),
+                            { strokeWidth: 1.2 }
+                        ),
+                        $(go.TextBlock,
+                            new go.Binding("text", "", function(d) {
+                                var cnt = d.sub_schedule_count || 0;
+                                var sub = d.latest_sub_schedule;
+                                if (!sub) return "↳ 分項網圖 (" + cnt + ")";
+                                var verTxt = cnt > 1 ? ("v" + sub.version_number + " / 共" + cnt + "版") : ("v" + sub.version_number);
+                                return "↳ 分項網圖 " + verTxt + " · " + sub.stage_label;
+                            }),
+                            new go.Binding("stroke", "", function(d) {
+                                var sub = d.latest_sub_schedule;
+                                if (sub && sub.stage_code === 'done') return "#15803d";
+                                return "#1d4ed8";
+                            }),
+                            { margin: new go.Margin(3, 6, 3, 6), font: "bold 11.5px sans-serif", textAlign: "center" }
+                        )
+                    ),
                 ),  // end Table Panel
                 // two small named ports, one on each side:
                 make_port("Left", go.Spot.Left, true, true),
@@ -509,8 +551,9 @@ const cpmApp = new Vue({
                                 $(go.Shape, { fill: null, stroke: "dodgerblue", strokeWidth: 3 }),
                                 $(go.Placeholder)
                             ), 
-                            // and this Adornment has a Button to the right of the selected node
+                            // Delete button (Edit Mode only)
                             $("Button",
+                                new go.Binding("visible", "", function(d){ return vm.is_graph_edit && d.key !== 'start' && d.key !== 'end'; }),
                                 new go.Binding("width", "", function(d){ return d.key === 'start' || d.key === 'end' ?  0 : 30 }),
                                 new go.Binding("height", "", function(d){ return d.key === 'start' || d.key === 'end' ?  0 : 30 }),
                                 { 
@@ -518,9 +561,34 @@ const cpmApp = new Vue({
                                     "ButtonBorder.fill": "red",
                                     alignment: go.Spot.TopLeft, alignmentFocus: go.Spot.Right,
                                     click: vm.remove_item_confirm,
-                                },  // define click behavior for Button in Adornment
-                                $(go.TextBlock, "X",  // the Button content
+                                },
+                                $(go.TextBlock, "X",
                                     { font: "bold 15pt sans-serif", stroke: 'white' })
+                            ),
+                            // WBS Sub-Schedule Drill-Down / Create Button (available in BOTH Read-Only and Edit Mode!)
+                            $("Button",
+                                new go.Binding("visible", "", function(d){ return d.key !== 'start' && d.key !== 'end'; }),
+                                {
+                                    "ButtonBorder.fill": "#2563eb",
+                                    "ButtonBorder.stroke": "#1d4ed8",
+                                    "_buttonFillOver": "#1d4ed8",
+                                    alignment: go.Spot.TopRight,
+                                    alignmentFocus: go.Spot.BottomRight,
+                                    margin: new go.Margin(0, 0, 4, 0),
+                                    cursor: "pointer",
+                                    click: function(e, obj) {
+                                        e.handled = true;
+                                        vm.open_sub_schedule(e, obj);
+                                    }
+                                },
+                                $(go.TextBlock,
+                                    new go.Binding("text", "", function(d) {
+                                        return (d.sub_schedule_count && d.sub_schedule_count > 0)
+                                            ? ("↳ 分項網圖 (" + d.sub_schedule_count + ")")
+                                            : "+ 建立分項網圖";
+                                    }),
+                                    { margin: new go.Margin(3, 8, 3, 8), font: "bold 11.5px sans-serif", stroke: "white" }
+                                )
                             ),
                         )  // end Adornment
                 },
@@ -1693,6 +1761,9 @@ const cpmApp = new Vue({
                                     msg: '計算並儲存成功',
                                     sound: false
                                 });
+                                if (window.parent && window.parent !== window) {
+                                    window.parent.postMessage({ type: 'cpm:saved', versionId: vm.schedule_version_id }, window.location.origin);
+                                }
 
                                 vm.temp_new_add_node = [];
         
@@ -1770,15 +1841,68 @@ const cpmApp = new Vue({
             const zoom = window.outerWidth / window.innerWidth;
             return Math.floor(zoom * 100) / 100;
         },
+        with_clean_pdm_nodes(fn){
+            const vm = this;
+            if(!vm.diagram) return fn();
+            const prevSkips = vm.diagram.skipsUndoManager;
+            vm.diagram.skipsUndoManager = true;
+            const prevSelection = [];
+            vm.diagram.selection.each(function(part){ prevSelection.push(part); });
+            const badgeStates = [];
+            try{
+                vm.diagram.clearSelection();
+                vm.diagram.nodes.each(function(node){
+                    const badge = node.findObject("WBS_SUB_BADGE");
+                    if(badge && badge.visible){
+                        badgeStates.push(badge);
+                        badge.visible = false;
+                        node.ensureBounds();
+                    }
+                });
+                return fn();
+            } finally {
+                badgeStates.forEach(function(badge){
+                    badge.visible = true;
+                    if(badge.part) badge.part.ensureBounds();
+                });
+                prevSelection.forEach(function(part){
+                    if(part && part.diagram === vm.diagram) part.isSelected = true;
+                });
+                vm.diagram.skipsUndoManager = prevSkips;
+            }
+        },
+        async refresh_wbs_badges(){
+            const vm = this;
+            if(!vm.diagram) return;
+            try{
+                const freshNodes = await vm.get_origin_node_data();
+                const mapById = {};
+                freshNodes.forEach(function(n){ mapById[String(n.id)] = n; });
+                const prevSkips = vm.diagram.skipsUndoManager;
+                vm.diagram.skipsUndoManager = true;
+                vm.diagram.model.nodeDataArray.forEach(function(d){
+                    const fresh = mapById[String(d.id || d.key)];
+                    if(fresh){
+                        vm.diagram.model.setDataProperty(d, 'sub_schedule_count', fresh.sub_schedule_count || 0);
+                        vm.diagram.model.setDataProperty(d, 'latest_sub_schedule', fresh.latest_sub_schedule || null);
+                    }
+                });
+                vm.diagram.skipsUndoManager = prevSkips;
+            } catch(e){
+                console.log(e);
+            }
+        },
         export_image(){
             const vm = this;
             vm.end_text_edit();
 
-            const img = this.diagram.makeImage({
-                scale: 1,
-                maxSize: new go.Size(20000, 20000),
-                background: "white",
-                type: "image/jpeg"
+            const img = vm.with_clean_pdm_nodes(function(){
+                return vm.diagram.makeImage({
+                    scale: 1,
+                    maxSize: new go.Size(20000, 20000),
+                    background: "white",
+                    type: "image/jpeg"
+                });
             });
 
             let a = document.createElement('a');
@@ -1912,11 +2036,13 @@ const cpmApp = new Vue({
                 // let no_start_end_link_data = vm.origin_link_data_array.filter(link => link.to !== 'end' && link.from !== 'start');
                 // console.log(save_result_resp);
                 if(save_result_resp === true){
-                    const img = vm.diagram.makeImage({
-                        scale: 1,
-                        maxSize: new go.Size(20000, 20000),
-                        background: "white",
-                        type: "image/jpeg"
+                    const img = vm.with_clean_pdm_nodes(function(){
+                        return vm.diagram.makeImage({
+                            scale: 1,
+                            maxSize: new go.Size(20000, 20000),
+                            background: "white",
+                            type: "image/jpeg"
+                        });
                     });
 
                     const img_data_url = img.src.split('base64,')[1];
@@ -2119,6 +2245,42 @@ const cpmApp = new Vue({
                 }
             }
         },
+        open_sub_schedule(e, obj){
+            const vm = this;
+            const part = obj && obj.part ? (obj.part.adornedPart || obj.part) : null;
+            const d = part ? part.data : vm.temp_selected_part;
+            if(!d || d.key === 'start' || d.key === 'end') return;
+            const itemId = parseInt(d.id || d.key, 10);
+            if(!itemId || isNaN(itemId)){
+                Lobibox.notify('warning', {
+                    title: '尚未儲存工項',
+                    msg: '請先儲存網圖後，再為此工項建立分項預定進度網圖。',
+                    sound: false
+                });
+                return;
+            }
+            if(window.parent && window.parent !== window){
+                window.parent.postMessage({
+                    type: 'cpm:open-sub-schedule',
+                    itemId: itemId,
+                    itemName: d.name || d.text || '',
+                    duration: parseInt(d.duration || d.length || 0, 10) || 0
+                }, window.location.origin);
+            } else {
+                axios.get('/schedule/api/active/scheduleitem/' + itemId + '/sub_schedules/').then(function(resp){
+                    const subs = (resp.data && resp.data.sub_schedules) || [];
+                    if(subs.length > 0){
+                        window.location.href = subs[subs.length - 1].url;
+                    } else {
+                        axios.post('/schedule/api/active/scheduleitem/' + itemId + '/sub_schedules/', {}, {
+                            headers: { 'X-CSRFToken': vm.csrftoken }
+                        }).then(function(r2){
+                            if(r2.data && r2.data.url) window.location.href = r2.data.url;
+                        });
+                    }
+                });
+            }
+        },
         bind_parent_bridge(){
             const vm = this;
             if(vm._parentBridgeBound) return;
@@ -2137,6 +2299,62 @@ const cpmApp = new Vue({
                     else if(msg.action === 'out') vm.diagram.commandHandler.decreaseZoom();
                     else if(msg.action === 'reset') vm.diagram.commandHandler.resetZoom();
                     else if(msg.action === 'fit') vm.diagram.zoomToFit();
+                } else if(msg.type === 'cpm:refresh-wbs-badges'){
+                    vm.refresh_wbs_badges();
+                } else if(msg.type === 'cpm:request-snapshot' && vm.diagram){
+                    const prevCrit = vm.is_critical_only;
+                    const wantCrit = typeof msg.criticalOnly === 'boolean' ? msg.criticalOnly : prevCrit;
+                    if(wantCrit !== prevCrit){
+                        vm.set_critical_only(wantCrit);
+                    }
+                    let dataUrl = '';
+                    let width = 1200;
+                    let height = 680;
+                    try{
+                        vm.with_clean_pdm_nodes(function(){
+                            // Compute full bounds across all parts so wide PDM diagrams are NEVER clipped
+                            const partBounds = vm.diagram.computePartsBounds(vm.diagram.parts);
+                            const docBounds = vm.diagram.documentBounds;
+                            const bounds = (partBounds && partBounds.isReal() && partBounds.width > 0)
+                                ? partBounds
+                                : docBounds;
+                            const pad = 28;
+                            const fullW = (bounds && bounds.width > 0) ? Math.ceil(bounds.width + pad * 2) : 1200;
+                            const fullH = (bounds && bounds.height > 0) ? Math.ceil(bounds.height + pad * 2) : 680;
+                            width = Math.max(400, fullW);
+                            height = Math.max(260, fullH);
+
+                            // Choose crisp scale that fits comfortably within browser canvas limits without clipping
+                            const maxEdge = 8192;
+                            const maxArea = 36000000; // ~36MP safe canvas area
+                            let captureScale = Math.min(2, maxEdge / Math.max(fullW, fullH));
+                            if (fullW * captureScale * fullH * captureScale > maxArea) {
+                                captureScale = Math.sqrt(maxArea / (fullW * fullH));
+                            }
+                            captureScale = Math.max(0.25, Math.min(2, captureScale));
+
+                            dataUrl = vm.diagram.makeImageData({
+                                scale: captureScale,
+                                maxSize: new go.Size(Infinity, Infinity),
+                                padding: new go.Margin(pad),
+                                background: 'white',
+                                type: 'image/png'
+                            });
+                        });
+                    } catch(e){
+                        dataUrl = '';
+                    } finally {
+                        if(wantCrit !== prevCrit){
+                            vm.set_critical_only(prevCrit);
+                        }
+                    }
+                    window.parent.postMessage({
+                        type: 'cpm:snapshot-ready',
+                        requestId: msg.requestId || '',
+                        dataUrl: dataUrl,
+                        width: width,
+                        height: height
+                    }, window.location.origin);
                 }
             });
         },

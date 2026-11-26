@@ -180,9 +180,9 @@ class Version_Schedule(M.Model):
             },
             {
                 'key': 'cpm_calc',
-                'label': '已完成 CPM 要徑計算與發佈',
+                'label': '已完成 CPM 要徑計算與儲存',
                 'ok': cpm_calc_ok,
-                'detail': f'已完成（{len(parsed_links)} 條連線，最長 {cpm_max_day} 天）' if cpm_calc_ok else '請先進入「編輯網圖」並點擊「計算並發佈」',
+                'detail': f'已完成（{len(parsed_links)} 條連線，最長 {cpm_max_day} 天）' if cpm_calc_ok else '請先進入「編輯網圖」並點擊「計算並儲存」',
             },
             {
                 'key': 'weight',

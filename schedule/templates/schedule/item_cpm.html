@@ -55,25 +55,68 @@
         </button>
     </div>
 
-    <!-- Center: Unified In-Page Segmented Switcher -->
+    <!-- Center: Progressive 3-Step Engineering Stepper -->
     <div class="sc-topbar-center">
-        <div class="sc-segmented" role="tablist" aria-label="預定進度檢視切換">
-            <button type="button" class="sc-segmented-btn active" id="tab-cpm" data-view="cpm" role="tab" aria-selected="true">
-                CPM 網圖
+        <nav class="sc-stepper" role="tablist" aria-label="預定進度作業步驟">
+            <button
+                type="button"
+                class="sc-step-item active {% if version.cpm_locked %}is-done{% endif %}"
+                id="tab-cpm"
+                data-view="cpm"
+                role="tab"
+                aria-selected="true"
+                title="步驟 1：建立工項、計算要徑並鎖定 CPM 邏輯網圖"
+            >
+                <span class="sc-step-num">
+                    {% if version.cpm_locked %}
+                        <span class="material-icons">check</span>
+                    {% else %}
+                        1
+                    {% endif %}
+                </span>
+                <span class="sc-step-label">邏輯網圖</span>
             </button>
-            <button type="button" class="sc-segmented-btn" id="tab-gantt" data-view="gantt" role="tab" aria-selected="false">
-                <span>甘特圖</span>
+
+            <span class="sc-step-arrow {% if version.cpm_locked %}is-unlocked{% endif %}" aria-hidden="true">
+                <span class="material-icons">chevron_right</span>
+            </span>
+
+            <button
+                type="button"
+                class="sc-step-item {% if not version.cpm_locked %}is-locked{% endif %}"
+                id="tab-gantt"
+                data-view="gantt"
+                role="tab"
+                aria-selected="false"
+                title="{% if version.cpm_locked %}步驟 2：於 [ES, LF] 區間調整甘特圖並檢視 ADM 箭線圖{% else %}需先完成並鎖定步驟 1「邏輯網圖」{% endif %}"
+            >
+                <span class="sc-step-num">2</span>
+                <span class="sc-step-label">進度調整</span>
                 {% if not version.cpm_locked %}
-                    <span class="material-icons sc-tab-lock-icon" title="請先鎖定 CPM 網圖">lock</span>
+                    <span class="material-icons sc-step-lock">lock</span>
                 {% endif %}
             </button>
-            <button type="button" class="sc-segmented-btn" id="draw_s_curve" data-view="scurve" role="tab" aria-selected="false">
-                <span>S 曲線</span>
+
+            <span class="sc-step-arrow {% if version.cpm_locked %}is-unlocked{% endif %}" aria-hidden="true">
+                <span class="material-icons">chevron_right</span>
+            </span>
+
+            <button
+                type="button"
+                class="sc-step-item {% if not version.cpm_locked %}is-locked{% endif %}"
+                id="draw_s_curve"
+                data-view="scurve"
+                role="tab"
+                aria-selected="false"
+                title="{% if version.cpm_locked %}步驟 3：檢視並匯出定案預定進度 S 曲線成果{% else %}需先完成並鎖定步驟 1「邏輯網圖」{% endif %}"
+            >
+                <span class="sc-step-num">3</span>
+                <span class="sc-step-label">進度成果</span>
                 {% if not version.cpm_locked %}
-                    <span class="material-icons sc-tab-lock-icon" title="請先鎖定 CPM 網圖">lock</span>
+                    <span class="material-icons sc-step-lock">lock</span>
                 {% endif %}
             </button>
-        </div>
+        </nav>
     </div>
 
     <!-- Right: Import / Export / More / Lock & Edit Controls -->
@@ -680,8 +723,8 @@
         $('.sc-view-pane').removeClass('active');
         $('#view-' + target).addClass('active');
 
-        $('.sc-segmented-btn').removeClass('active').attr('aria-selected', 'false');
-        $('.sc-segmented-btn[data-view="' + target + '"]').addClass('active').attr('aria-selected', 'true');
+        $('.sc-step-item').removeClass('active').attr('aria-selected', 'false');
+        $('.sc-step-item[data-view="' + target + '"]').addClass('active').attr('aria-selected', 'true');
 
         $('#cpm-canvas-controls').toggle(target === 'cpm');
 

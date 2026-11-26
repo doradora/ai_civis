@@ -1533,7 +1533,7 @@ const cpmApp = new Vue({
             
                         Lobibox.notify("success", {
                             title: '系統訊息',
-                            msg: '儲存成功',
+                            msg: '已暫存草稿（完成後請點「計算並儲存」以重算要徑）',
                             sound: false
                         });
 
@@ -1939,7 +1939,7 @@ const cpmApp = new Vue({
                     LOADER.close();
                     Lobibox.notify("success", {
                         title: '系統訊息',
-                        msg: '計算並發佈成功！',
+                        msg: '計算並儲存成功！可切回唯讀並鎖定 CPM',
                         sound: false
                     });
                 }else{

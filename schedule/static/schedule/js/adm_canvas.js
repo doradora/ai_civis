@@ -51,6 +51,7 @@
             this.projectTitle = options.projectTitle || '';
 
             this.valueType = options.valueType || 'esef';
+            this.nodeStyle = options.nodeStyle || 'box'; // 'box' | 'circle3'
             this.stretch = Number(options.stretch || 1.0); // 0.6 ~ 3.0
             this.fontSize = options.fontSize || 'auto'; // 'auto' | 11 | 13 | 16 | 20
             this.gridStep = options.gridStep || 'auto'; // 'auto' | 1 | 5 | 7 | 10 | 15 | 30
@@ -262,7 +263,8 @@
                 ? Number((12.5 * autoBoost).toFixed(1))
                 : Number(this.fontSize || 13);
             const uiScale = Math.max(1.0, fontSize / 12);
-            const nodeR = Math.round(16 * uiScale);
+            const isCircle3 = this.nodeStyle === 'circle3';
+            const nodeR = Math.round((isCircle3 ? 23 : 16) * uiScale);
             const boxW = Math.round(34 * uiScale);
             const cellH = Math.round(16 * uiScale);
             const boxH = cellH * 2;
@@ -290,10 +292,11 @@
             const laneYs = [];
             let curY = PAD_TOP + Math.round(12 * uiScale);
             for (let l = 0; l < numLanes; l++) {
-                const topSpace = Math.max(laneMaxLines[l] * lineH + Math.round(22 * uiScale), nodeR + boxH + 14);
+                const nodeTopNeed = isCircle3 ? (nodeR + 12) : (nodeR + boxH + 14);
+                const topSpace = Math.max(laneMaxLines[l] * lineH + Math.round(22 * uiScale), nodeTopNeed);
                 const y = curY + topSpace;
                 laneYs.push(y);
-                curY = y + Math.round(34 * uiScale);
+                curY = y + Math.round((isCircle3 ? 40 : 34) * uiScale);
             }
             const yOf = function (lane) { return laneYs[lane]; };
 
@@ -367,7 +370,9 @@
                 x: self.contentW / 2, y: axisBotY + Math.round(44 * uiScale), 'text-anchor': 'middle',
                 'font-size': String(axisFontSize), fill: '#475569', 'font-weight': '600'
             });
-            footerTxt.textContent = '節點上方雙格：[ 上: ES 最早 / 下: LF 最晚 ]  ｜  紅線：要徑 (TF=0)   黑線：非要徑   虛線：相依邏輯';
+            footerTxt.textContent = isCircle3
+                ? '節點三格圓：[ 上半圓: 天數 / 左下: ES 最早 / 右下: LF 最晚 ]  ｜  紅線：要徑 (TF=0)   黑線：非要徑   虛線：相依邏輯'
+                : '節點上方雙格：[ 上: ES 最早 / 下: LF 最晚 ]  ｜  紅線：要徑 (TF=0)   黑線：非要徑   虛線：相依邏輯';
             this.axisLayer.appendChild(footerTxt);
 
             // 3. Collect unique event nodes with earliest (ES/TE) & latest (LF/TL) times
@@ -511,7 +516,7 @@
             });
 
             // 6. Circular event nodes
-            orderedNodes.forEach(function (pt) {
+            orderedNodes.forEach(function (pt, idx) {
                 const isCritNode = pt.cp || (pt.te === pt.tl);
                 const strokeCol = isCritNode ? '#ef4444' : '#2563eb';
                 const topBg = isCritNode ? '#fff1f2' : '#eff6ff';
@@ -520,49 +525,114 @@
                     class: 'adm-event-node' + (pt.cp ? ' is-critical' : ' is-noncritical')
                 });
 
-                // 2-cell [ES / LF] vertical box directly above the circle
-                const bx = pt.x - boxW / 2;
-                const by = pt.y - nodeR - boxH - 4;
+                if (isCircle3) {
+                    // 3-Sector ADM Circle: Top half = Day, Bottom-left 1/4 = ES, Bottom-right 1/4 = LF
+                    const clipId = 'adm-c3-clip-' + idx + '-' + Math.round(pt.x);
+                    const clip = createSvgEl('clipPath', { id: clipId });
+                    clip.appendChild(createSvgEl('circle', { cx: pt.x, cy: pt.y, r: nodeR }));
+                    ng.appendChild(clip);
 
-                ng.appendChild(createSvgEl('rect', {
-                    x: bx, y: by, width: boxW, height: cellH,
-                    fill: topBg, stroke: strokeCol, 'stroke-width': String((1.3 * uiScale).toFixed(1))
-                }));
-                ng.appendChild(createSvgEl('rect', {
-                    x: bx, y: by + cellH, width: boxW, height: cellH,
-                    fill: '#ffffff', stroke: strokeCol, 'stroke-width': String((1.3 * uiScale).toFixed(1))
-                }));
+                    const cInner = createSvgEl('g', { 'clip-path': `url(#${clipId})` });
+                    // Top half soft fill
+                    cInner.appendChild(createSvgEl('rect', {
+                        x: pt.x - nodeR, y: pt.y - nodeR, width: nodeR * 2, height: nodeR, fill: topBg
+                    }));
+                    // Bottom half white fill
+                    cInner.appendChild(createSvgEl('rect', {
+                        x: pt.x - nodeR, y: pt.y, width: nodeR * 2, height: nodeR, fill: '#ffffff'
+                    }));
+                    // Horizontal diameter divider (top 1/2 vs bottom 1/2)
+                    cInner.appendChild(createSvgEl('line', {
+                        x1: pt.x - nodeR, y1: pt.y, x2: pt.x + nodeR, y2: pt.y,
+                        stroke: strokeCol, 'stroke-width': String((1.3 * uiScale).toFixed(1))
+                    }));
+                    // Vertical bottom-half radius divider (bottom-left 1/4 vs bottom-right 1/4)
+                    cInner.appendChild(createSvgEl('line', {
+                        x1: pt.x, y1: pt.y, x2: pt.x, y2: pt.y + nodeR,
+                        stroke: strokeCol, 'stroke-width': String((1.3 * uiScale).toFixed(1))
+                    }));
+                    ng.appendChild(cInner);
 
-                const esTxt = createSvgEl('text', {
-                    x: pt.x, y: by + Math.round(cellH * 0.75), 'text-anchor': 'middle',
-                    'font-size': String(boxFontSize), 'font-weight': '700',
-                    fill: isCritNode ? '#be123c' : '#1d4ed8'
-                });
-                esTxt.textContent = String(Math.round(pt.te));
-                ng.appendChild(esTxt);
+                    // Outer circle border
+                    ng.appendChild(createSvgEl('circle', {
+                        cx: pt.x, cy: pt.y, r: nodeR,
+                        fill: 'none',
+                        stroke: strokeCol,
+                        'stroke-width': String(((pt.cp ? 2 : 1.5) * uiScale).toFixed(1))
+                    }));
 
-                const lfTxt = createSvgEl('text', {
-                    x: pt.x, y: by + cellH + Math.round(cellH * 0.75), 'text-anchor': 'middle',
-                    'font-size': String(boxFontSize), 'font-weight': '700',
-                    fill: isCritNode ? '#be123c' : '#334155'
-                });
-                lfTxt.textContent = String(Math.round(pt.tl));
-                ng.appendChild(lfTxt);
+                    const subFont = Math.max(8, Math.round(boxFontSize * 0.86));
+                    // Top half: Day
+                    const dayTxt = createSvgEl('text', {
+                        x: pt.x, y: pt.y - Math.round(nodeR * 0.22), 'text-anchor': 'middle',
+                        'font-size': String(boxFontSize), 'font-weight': '700',
+                        fill: isCritNode ? '#b91c1c' : '#0f172a'
+                    });
+                    dayTxt.textContent = String(Math.round(pt.day));
+                    ng.appendChild(dayTxt);
 
-                // Event circle with sequential node number
-                ng.appendChild(createSvgEl('circle', {
-                    cx: pt.x, cy: pt.y, r: nodeR,
-                    fill: '#ffffff',
-                    stroke: pt.cp ? '#ef4444' : '#334155',
-                    'stroke-width': String((pt.cp ? 2 : 1.5) * uiScale)
-                }));
-                const txt = createSvgEl('text', {
-                    x: pt.x, y: pt.y + Math.round(boxFontSize * 0.36), 'text-anchor': 'middle',
-                    'font-size': String(boxFontSize), 'font-weight': '700',
-                    fill: pt.cp ? '#b91c1c' : '#0f172a'
-                });
-                txt.textContent = String(pt.nodeNo);
-                ng.appendChild(txt);
+                    // Bottom-left 1/4: ES
+                    const esTxt = createSvgEl('text', {
+                        x: pt.x - Math.round(nodeR * 0.42), y: pt.y + Math.round(nodeR * 0.56), 'text-anchor': 'middle',
+                        'font-size': String(subFont), 'font-weight': '700',
+                        fill: isCritNode ? '#be123c' : '#1d4ed8'
+                    });
+                    esTxt.textContent = String(Math.round(pt.te));
+                    ng.appendChild(esTxt);
+
+                    // Bottom-right 1/4: LF
+                    const lfTxt = createSvgEl('text', {
+                        x: pt.x + Math.round(nodeR * 0.42), y: pt.y + Math.round(nodeR * 0.56), 'text-anchor': 'middle',
+                        'font-size': String(subFont), 'font-weight': '700',
+                        fill: isCritNode ? '#be123c' : '#334155'
+                    });
+                    lfTxt.textContent = String(Math.round(pt.tl));
+                    ng.appendChild(lfTxt);
+                } else {
+                    // Classic 2-cell [ES / LF] vertical box directly above the circle
+                    const bx = pt.x - boxW / 2;
+                    const by = pt.y - nodeR - boxH - 4;
+
+                    ng.appendChild(createSvgEl('rect', {
+                        x: bx, y: by, width: boxW, height: cellH,
+                        fill: topBg, stroke: strokeCol, 'stroke-width': String((1.3 * uiScale).toFixed(1))
+                    }));
+                    ng.appendChild(createSvgEl('rect', {
+                        x: bx, y: by + cellH, width: boxW, height: cellH,
+                        fill: '#ffffff', stroke: strokeCol, 'stroke-width': String((1.3 * uiScale).toFixed(1))
+                    }));
+
+                    const esTxt = createSvgEl('text', {
+                        x: pt.x, y: by + Math.round(cellH * 0.75), 'text-anchor': 'middle',
+                        'font-size': String(boxFontSize), 'font-weight': '700',
+                        fill: isCritNode ? '#be123c' : '#1d4ed8'
+                    });
+                    esTxt.textContent = String(Math.round(pt.te));
+                    ng.appendChild(esTxt);
+
+                    const lfTxt = createSvgEl('text', {
+                        x: pt.x, y: by + cellH + Math.round(cellH * 0.75), 'text-anchor': 'middle',
+                        'font-size': String(boxFontSize), 'font-weight': '700',
+                        fill: isCritNode ? '#be123c' : '#334155'
+                    });
+                    lfTxt.textContent = String(Math.round(pt.tl));
+                    ng.appendChild(lfTxt);
+
+                    // Event circle with sequential node number
+                    ng.appendChild(createSvgEl('circle', {
+                        cx: pt.x, cy: pt.y, r: nodeR,
+                        fill: '#ffffff',
+                        stroke: pt.cp ? '#ef4444' : '#334155',
+                        'stroke-width': String((pt.cp ? 2 : 1.5) * uiScale)
+                    }));
+                    const txt = createSvgEl('text', {
+                        x: pt.x, y: pt.y + Math.round(boxFontSize * 0.36), 'text-anchor': 'middle',
+                        'font-size': String(boxFontSize), 'font-weight': '700',
+                        fill: pt.cp ? '#b91c1c' : '#0f172a'
+                    });
+                    txt.textContent = String(pt.nodeNo);
+                    ng.appendChild(txt);
+                }
                 self.nodeLayer.appendChild(ng);
             });
 
@@ -660,6 +730,11 @@
             this.rawNodes = Array.isArray(nodes) ? nodes : [];
             if (Array.isArray(links)) this.rawLinks = links;
             this.render(Boolean(autoFit));
+        }
+
+        setNodeStyle(style) {
+            this.nodeStyle = (style === 'circle3') ? 'circle3' : 'box';
+            this.render(false);
         }
 
         setValueType(vt) {

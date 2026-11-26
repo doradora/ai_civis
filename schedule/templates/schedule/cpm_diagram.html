@@ -91,7 +91,7 @@
                         <span class="badge rounded-pill bg-primary-subtle text-primary border border-primary-subtle px-2 py-1">
                             <span class="material-icons align-middle me-1" style="font-size:14px;">edit</span>網圖編輯模式
                         </span>
-                        <span class="small text-secondary rwd-hide">拖曳節點與拉線完成後請點擊「計算並發佈」</span>
+                        <span class="small text-secondary rwd-hide">拖曳節點與拉線完成後請點擊「計算並儲存」</span>
                     </div>
                     {% endif %}
                     <div class="{% if embed %}col-md-8{% else %}col-md-6{% endif %} px-0 text-end">
@@ -129,10 +129,10 @@
                                 @click="save_edited_result()"
                                 data-bs-toggle="tooltip"
                                 data-bs-placement="bottom"
-                                title="儲存編輯資料"
+                                title="暫存目前節點與連線草稿（不重算要徑）"
                             >
                                 <span class="material-icons">save</span>
-                                <span class="rwd-hide">儲存</span>
+                                <span class="rwd-hide">暫存草稿</span>
                             </button>
 
                             <button
@@ -141,11 +141,11 @@
                                 class="btn sc-btn sc-btn-primary py-1 px-3"
                                 data-bs-toggle="tooltip"
                                 data-bs-placement="bottom"
-                                title="送出計算要徑並發佈圖檔"
+                                title="檢查連線、計算要徑並完整儲存"
                                 @click="show_update_data_modal()"
                             >
                                 <span class="material-icons">calculate</span>
-                                <span>計算並發佈</span>
+                                <span>計算並儲存</span>
                             </button>
 
                             <button

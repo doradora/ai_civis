@@ -727,6 +727,7 @@ function initial_gantt() {
                 nodes: nodes,
                 links: links,
                 valueType: 'esef',
+                nodeStyle: $('#adm-node-style').val() || 'box',
                 stretch: parseFloat($('#adm-stretch-range').val()) || 1.0,
                 fontSize: ($('#adm-font-size').val() && !isNaN(parseFloat($('#adm-font-size').val()))) ? parseFloat($('#adm-font-size').val()) : 'auto',
                 gridStep: String(recStep),
@@ -755,6 +756,9 @@ function initial_gantt() {
             $('#adm-font-auto-btn').off('click').on('click', function () {
                 $('#adm-font-size').val('');
                 ganttAdmInstance.setFontSize('auto');
+            });
+            $('#adm-node-style').off('change').on('change', function () {
+                ganttAdmInstance.setNodeStyle(this.value);
             });
             $('#adm-grid-step').off('change').on('change', function () {
                 ganttAdmInstance.setGridStep(this.value);

@@ -1907,3 +1907,106 @@ html, body {
     padding: 3px 5px;
     gap: 2px;
 }
+
+/* Progressive 3-Step Wizard Stepper (邏輯網圖 -> 進度調整 -> 進度成果) */
+.sc-stepper {
+    display: inline-flex;
+    align-items: center;
+    background: #f8fafc;
+    border: 1px solid var(--sc-slate-200);
+    border-radius: 999px;
+    padding: 3px 6px;
+    gap: 2px;
+}
+
+.sc-step-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.42rem;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--sc-slate-600);
+    font-size: 0.84rem;
+    font-weight: 600;
+    padding: 0.28rem 0.78rem;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.16s ease;
+    white-space: nowrap;
+}
+
+.sc-step-item:hover {
+    color: var(--sc-navy-900);
+    background: rgba(255, 255, 255, 0.7);
+}
+
+.sc-step-num {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #e2e8f0;
+    color: #475569;
+    font-size: 0.74rem;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.16s ease;
+}
+
+.sc-step-num .material-icons {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.sc-step-item.active {
+    background: #ffffff;
+    border-color: #bfdbfe;
+    color: #1d4ed8;
+    box-shadow: 0 1px 5px rgba(37, 99, 235, 0.14);
+}
+
+.sc-step-item.active .sc-step-num {
+    background: #2563eb;
+    color: #ffffff;
+}
+
+.sc-step-item.is-done .sc-step-num {
+    background: #16a34a;
+    color: #ffffff;
+}
+
+.sc-step-item.is-done:not(.active) {
+    color: #15803d;
+}
+
+.sc-step-item.is-locked {
+    color: #94a3b8;
+}
+
+.sc-step-item.is-locked .sc-step-num {
+    background: #f1f5f9;
+    color: #94a3b8;
+}
+
+.sc-step-lock {
+    font-size: 13px !important;
+    color: #94a3b8;
+    margin-left: -2px;
+}
+
+.sc-step-arrow {
+    display: inline-flex;
+    align-items: center;
+    color: #cbd5e1;
+    user-select: none;
+}
+
+.sc-step-arrow .material-icons {
+    font-size: 18px;
+}
+
+.sc-step-arrow.is-unlocked {
+    color: #16a34a;
+}
